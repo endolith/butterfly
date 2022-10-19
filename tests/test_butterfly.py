@@ -23,7 +23,7 @@ class ButterflyTest(unittest.TestCase):
 
     def test_butterfly(self):
         batch_size = 10
-        for device in ['cpu'] + ([] if not torch.cuda.is_available() else ['cuda']):
+        for device in ['cpu'] + (['cuda'] if torch.cuda.is_available() else []):
             for in_size, out_size in [(7, 15), (15, 7)]:
                 for complex in [False, True]:
                     for increasing_stride in [True, False]:
@@ -31,7 +31,7 @@ class ButterflyTest(unittest.TestCase):
                             for nblocks in [1, 2, 3]:
                                 b = Butterfly(in_size, out_size, True, complex, increasing_stride,
                                               init, nblocks=nblocks).to(device)
-                                dtype = torch.float32 if not complex else torch.complex64
+                                dtype = torch.complex64 if complex else torch.float32
                                 input = torch.randn(batch_size, in_size, dtype=dtype, device=device)
                                 output = b(input)
                                 self.assertTrue(output.shape == (batch_size, out_size),
@@ -124,7 +124,7 @@ class ButterflyTest(unittest.TestCase):
             with torch.no_grad():
                 inital_loss = F.mse_loss(model(x), y)
             optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
-            for i in range(niters):
+            for _ in range(niters):
                 out = model(x)
                 loss = F.mse_loss(out, y)
                 optimizer.zero_grad()
@@ -140,7 +140,7 @@ class ButterflyTest(unittest.TestCase):
             for increasing_stride in [True, False]:
                 for nblocks in [1, 2, 3]:
                     b = Butterfly(n, n, False, complex, increasing_stride, nblocks=nblocks)
-                    dtype = torch.float32 if not complex else torch.complex64
+                    dtype = torch.complex64 if complex else torch.float32
                     input = torch.eye(n, dtype=dtype)
                     matrix = b(input).t()
                     matrix_t = b.forward(input, transpose=True).t()
@@ -163,7 +163,7 @@ class ButterflyTest(unittest.TestCase):
             for increasing_stride in [True, False]:
                 for nblocks in [1, 2, 3]:
                     b = Butterfly(n, n, True, complex, increasing_stride, nblocks=nblocks)
-                    dtype = torch.float32 if not complex else torch.complex64
+                    dtype = torch.complex64 if complex else torch.float32
                     input = torch.randn(batch_size, input_size, dtype=dtype)
                     output = b(input, subtwiddle=True)
                     self.assertTrue(output.shape == (batch_size, input_size),
@@ -180,7 +180,7 @@ class ButterflyTest(unittest.TestCase):
                             for scale in [0.13, 2.75]:
                                 b = Butterfly(in_size, out_size, False, complex, increasing_stride,
                                               init, nblocks=nblocks).to(device)
-                                dtype = torch.float32 if not complex else torch.complex64
+                                dtype = torch.complex64 if complex else torch.float32
                                 input = torch.randn(batch_size, in_size, dtype=dtype, device=device)
                                 output = b(input)
                                 with torch.no_grad():
@@ -192,7 +192,7 @@ class ButterflyTest(unittest.TestCase):
 
     def test_butterfly_to_base4(self):
         batch_size = 10
-        for device in ['cpu'] + ([] if not torch.cuda.is_available() else ['cuda']):
+        for device in ['cpu'] + (['cuda'] if torch.cuda.is_available() else []):
             for in_size, out_size in [(7, 15), (15, 7)]:
                 for complex in [False, True]:
                     for increasing_stride in [True, False]:
@@ -200,7 +200,7 @@ class ButterflyTest(unittest.TestCase):
                             for nblocks in [1, 2, 3]:
                                 b = Butterfly(in_size, out_size, True, complex, increasing_stride,
                                               init, nblocks=nblocks).to(device)
-                                dtype = torch.float32 if not complex else torch.complex64
+                                dtype = torch.complex64 if complex else torch.float32
                                 input = torch.randn(batch_size, in_size, dtype=dtype, device=device)
                                 output = b(input)
                                 b4 = b.to_base4()
@@ -212,7 +212,7 @@ class ButterflyTest(unittest.TestCase):
     def test_butterfly_unitary(self):
         # Test shape
         batch_size = 10
-        for device in ['cpu'] + ([] if not torch.cuda.is_available() else ['cuda']):
+        for device in ['cpu'] + (['cuda'] if torch.cuda.is_available() else []):
             for in_size, out_size in [(7, 15), (15, 7)]:
                 for increasing_stride in [True, False]:
                     for nblocks in [1, 2, 3]:
@@ -237,7 +237,7 @@ class ButterflyTest(unittest.TestCase):
     def test_butterfly_bmm(self):
         batch_size = 10
         matrix_batch = 3
-        for device in ['cpu'] + ([] if not torch.cuda.is_available() else ['cuda']):
+        for device in ['cpu'] + (['cuda'] if torch.cuda.is_available() else []):
             for in_size, out_size in [(7, 15), (15, 7)]:
                 for complex in [False, True]:
                     for increasing_stride in [True, False]:
@@ -245,7 +245,7 @@ class ButterflyTest(unittest.TestCase):
                             # Test shape
                             b_bmm = torch_butterfly.ButterflyBmm(in_size, out_size, matrix_batch, True,
                                                              complex, increasing_stride, nblocks=nblocks).to(device)
-                            dtype = torch.float32 if not complex else torch.complex64
+                            dtype = torch.complex64 if complex else torch.float32
                             input = torch.randn(batch_size, matrix_batch, in_size, dtype=dtype, device=device)
                             output = b_bmm(input)
                             self.assertTrue(output.shape == (batch_size, matrix_batch, out_size),

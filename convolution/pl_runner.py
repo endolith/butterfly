@@ -7,14 +7,17 @@ from pytorch_lightning.callbacks import Callback
 
 
 def pl_train(cfg, pl_module_cls, **kwargs):
-    trainer_args = dict(
-        gpus=1,
-        max_epochs=1 if cfg.smoke_test else cfg.train.epochs,
-        checkpoint_callback=False,  # Disable checkpointing to save disk space
-        progress_bar_refresh_rate=1,
-        **cfg.train.pltrainer,
+    trainer_args = (
+        dict(
+            gpus=1,
+            max_epochs=1 if cfg.smoke_test else cfg.train.epochs,
+            checkpoint_callback=False,  # Disable checkpointing to save disk space
+            progress_bar_refresh_rate=1,
+            **cfg.train.pltrainer,
+        )
+        | kwargs
     )
-    trainer_args.update(kwargs)
+
     if cfg.seed is not None:
         pl.seed_everything(cfg.seed)
     model = pl_module_cls(cfg.model, cfg.dataset, cfg.train)

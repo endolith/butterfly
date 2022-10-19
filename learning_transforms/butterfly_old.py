@@ -74,14 +74,23 @@ class Butterfly(nn.Module):
     def matrix(self):
         """Matrix form of the butterfly matrix
         """
-        if not self.complex:
-            return (torch.diag(self.diag)
-                    + torch.diag(self.subdiag, -self.diagonal)
-                    + torch.diag(self.superdiag, self.diagonal))
-        else: # Use torch.diag_embed (available in Pytorch 1.0) to deal with complex case.
-            return (torch.diag_embed(self.diag.t(), dim1=0, dim2=1)
-                    + torch.diag_embed(self.subdiag.t(), -self.diagonal, dim1=0, dim2=1)
-                    + torch.diag_embed(self.superdiag.t(), self.diagonal, dim1=0, dim2=1))
+        return (
+            (
+                torch.diag_embed(self.diag.t(), dim1=0, dim2=1)
+                + torch.diag_embed(
+                    self.subdiag.t(), -self.diagonal, dim1=0, dim2=1
+                )
+                + torch.diag_embed(
+                    self.superdiag.t(), self.diagonal, dim1=0, dim2=1
+                )
+            )
+            if self.complex
+            else (
+                torch.diag(self.diag)
+                + torch.diag(self.subdiag, -self.diagonal)
+                + torch.diag(self.superdiag, self.diagonal)
+            )
+        )
 
     def forward(self, input):
         """
@@ -127,15 +136,12 @@ class MatrixProduct(nn.Module):
     def matrix(self, temperature=1.0):
         if self.fixed_order:
             matrices = [factor.matrix() for factor in self.factors]
-            return functools.reduce(self.matmul_op, matrices)
         else:
             prob = self.softmax_fn(self.logit / temperature)
             stack = torch.stack([factor.matrix() for factor in self.factors])
             matrices = (prob @ stack.reshape(stack.shape[0], -1)).reshape((-1,) + stack.shape[1:])
-            # Alternative: slightly slower but easier to understand
-            # matrices = torch.einsum('ab, b...->a...', (prob, stack))
-            # return torch.chain_matmul(*matrices)  ## Doesn't work for complex
-            return functools.reduce(self.matmul_op, matrices)
+
+        return functools.reduce(self.matmul_op, matrices)
 
     def forward(self, input, temperature=1.0):
         """
@@ -144,19 +150,18 @@ class MatrixProduct(nn.Module):
         Return:
             output: (..., size) if real or (..., size, 2) if complex
         """
+        output = input
         if self.fixed_order:
-            output = input
             for factor in self.factors[::-1]:
                 output = factor(output)
-            return output
         else:
             prob = self.softmax_fn(self.logit / temperature)
-            output = input
             for i in range(self.n_terms)[::-1]:
                 # output = (torch.stack([factor(output) for factor in self.factors], dim=-1) * prob[i]).sum(dim=-1)
                 stack = torch.stack([factor(output) for factor in self.factors])
                 output = (prob[i:i+1] @ stack.reshape(stack.shape[0], -1)).reshape(stack.shape[1:])
-            return output
+
+        return output
 
 
 class ButterflyProduct(MatrixProduct):
@@ -178,10 +183,12 @@ class ButterflyProduct(MatrixProduct):
         matrix = super().matrix(temperature)
         if self.learn_perm:
             perm = sinkhorn(self.perm_logit / temperature)
-            if not self.complex:
-                matrix = matrix @ perm
-            else:
-                matrix = (matrix.transpose(-1, -2) @ perm).transpose(-1, -2)
+            matrix = (
+                (matrix.transpose(-1, -2) @ perm).transpose(-1, -2)
+                if self.complex
+                else matrix @ perm
+            )
+
         return matrix
 
     def forward(self, input, temperature=1.0):
@@ -193,10 +200,12 @@ class ButterflyProduct(MatrixProduct):
         """
         if self.learn_perm:
             perm = sinkhorn(self.perm_logit / temperature)
-            if not self.complex:
-                input = input @ perm.t()
-            else:
-                input = (input.transpose(-1, -2) @ perm.t()).transpose(-1, -2)
+            input = (
+                (input.transpose(-1, -2) @ perm.t()).transpose(-1, -2)
+                if self.complex
+                else input @ perm.t()
+            )
+
         return super().forward(input, temperature)
 
 
@@ -219,30 +228,29 @@ class Block2x2Diag(nn.Module):
         self.size = size
         self.complex = complex
         self.mul_op = complex_mul if complex else operator.mul
-        ABCD_shape = (2, 2, size // 2) if not complex else (2, 2, size // 2, 2)
+        ABCD_shape = (2, 2, size // 2, 2) if complex else (2, 2, size // 2)
         scaling = 1.0 / 2 if complex else 1.0 / math.sqrt(2)
         if ABCD is None:
             if not ortho_init:
                 self.ABCD = nn.Parameter(torch.randn(ABCD_shape) * scaling)
+            elif complex:
+                # Sampling from the Haar measure on U(2) is a bit subtle.
+                # Using the parameterization here: http://home.lu.lv/~sd20008/papers/essays/Random%20unitary%20[paper].pdf
+                phi = torch.asin(torch.sqrt(torch.rand(size // 2)))
+                c, s = torch.cos(phi), torch.sin(phi)
+                alpha, psi, chi = torch.randn(3, size // 2) * math.pi * 2
+                A = torch.stack((c * torch.cos(alpha + psi), c * torch.sin(alpha + psi)), dim=-1)
+                B = torch.stack((s * torch.cos(alpha + chi), s * torch.sin(alpha + chi)), dim=-1)
+                C = torch.stack((-s * torch.cos(alpha - chi), -s * torch.sin(alpha - chi)), dim=-1)
+                D = torch.stack((c * torch.cos(alpha - psi), c * torch.sin(alpha - psi)), dim=-1)
+                self.ABCD = nn.Parameter(torch.stack((torch.stack((A, B)),
+                                                      torch.stack((C, D)))))
             else:
-                if not complex:
-                    theta = torch.rand(size // 2) * math.pi * 2
-                    c, s = torch.cos(theta), torch.sin(theta)
-                    det = torch.randint(0, 2, (size // 2, ), dtype=c.dtype) * 2 - 1  # Rotation (+1) or reflection (-1)
-                    self.ABCD = nn.Parameter(torch.stack((torch.stack((det * c, -det * s)),
-                                                          torch.stack((s, c)))))
-                else:
-                    # Sampling from the Haar measure on U(2) is a bit subtle.
-                    # Using the parameterization here: http://home.lu.lv/~sd20008/papers/essays/Random%20unitary%20[paper].pdf
-                    phi = torch.asin(torch.sqrt(torch.rand(size // 2)))
-                    c, s = torch.cos(phi), torch.sin(phi)
-                    alpha, psi, chi = torch.randn(3, size // 2) * math.pi * 2
-                    A = torch.stack((c * torch.cos(alpha + psi), c * torch.sin(alpha + psi)), dim=-1)
-                    B = torch.stack((s * torch.cos(alpha + chi), s * torch.sin(alpha + chi)), dim=-1)
-                    C = torch.stack((-s * torch.cos(alpha - chi), -s * torch.sin(alpha - chi)), dim=-1)
-                    D = torch.stack((c * torch.cos(alpha - psi), c * torch.sin(alpha - psi)), dim=-1)
-                    self.ABCD = nn.Parameter(torch.stack((torch.stack((A, B)),
-                                                          torch.stack((C, D)))))
+                theta = torch.rand(size // 2) * math.pi * 2
+                c, s = torch.cos(theta), torch.sin(theta)
+                det = torch.randint(0, 2, (size // 2, ), dtype=c.dtype) * 2 - 1  # Rotation (+1) or reflection (-1)
+                self.ABCD = nn.Parameter(torch.stack((torch.stack((det * c, -det * s)),
+                                                      torch.stack((s, c)))))
         else:
             assert ABCD.shape == ABCD_shape, f'ABCD must have shape {ABCD_shape}'
             self.ABCD = ABCD
@@ -254,12 +262,15 @@ class Block2x2Diag(nn.Module):
         Return:
             output: (..., size) if real or (..., size, 2) if complex
         """
-        if not self.complex:
-            # return ((self.ABCD * input.view(input.shape[:-1] + (1, 2, self.size // 2))).sum(dim=-2)).view(input.shape)
-            return butterfly_factor_mult(self.ABCD, input.view(-1, 2, self.size // 2)).view(input.shape)
-        else:
-            # return (self.mul_op(self.ABCD, input.view(input.shape[:-2] + (1, 2, self.size // 2, 2))).sum(dim=-3)).view(input.shape)
-            return butterfly_factor_mult(self.ABCD, input.view(-1, 2, self.size // 2, 2)).view(input.shape)
+        return (
+            butterfly_factor_mult(
+                self.ABCD, input.view(-1, 2, self.size // 2, 2)
+            ).view(input.shape)
+            if self.complex
+            else butterfly_factor_mult(
+                self.ABCD, input.view(-1, 2, self.size // 2)
+            ).view(input.shape)
+        )
 
 
 class Block2x2DiagProduct(nn.Module):
@@ -284,10 +295,16 @@ class Block2x2DiagProduct(nn.Module):
         """
         output = input.contiguous()
         for factor in self.factors[::-1]:
-            if not self.complex:
-                output = factor(output.view(output.shape[:-1] + (-1, factor.size))).view(output.shape)
-            else:
-                output = factor(output.view(output.shape[:-2] + (-1, factor.size, 2))).view(output.shape)
+            output = (
+                factor(output.view(output.shape[:-2] + (-1, factor.size, 2))).view(
+                    output.shape
+                )
+                if self.complex
+                else factor(
+                    output.view(output.shape[:-1] + (-1, factor.size))
+                ).view(output.shape)
+            )
+
         return output
 
 
@@ -302,30 +319,32 @@ class Block2x2DiagProductAllinOne(nn.Module):
         self.size = size
         self.rank = rank
         self.complex = complex
-        twiddle_shape = (rank, size - 1, 2, 2) if not complex else (rank, size - 1, 2, 2, 2)
+        twiddle_shape = (
+            (rank, size - 1, 2, 2, 2) if complex else (rank, size - 1, 2, 2)
+        )
+
         scaling = 1.0 / 2 if complex else 1.0 / math.sqrt(2)
         if twiddle is None:
             if not ortho_init:
                 self.twiddle = nn.Parameter(torch.randn(twiddle_shape) * scaling)
+            elif complex:
+                # Sampling from the Haar measure on U(2) is a bit subtle.
+                # Using the parameterization here: http://home.lu.lv/~sd20008/papers/essays/Random%20unitary%20[paper].pdf
+                phi = torch.asin(torch.sqrt(torch.rand(rank, size - 1)))
+                c, s = torch.cos(phi), torch.sin(phi)
+                alpha, psi, chi = torch.randn(3, rank, size - 1) * math.pi * 2
+                A = torch.stack((c * torch.cos(alpha + psi), c * torch.sin(alpha + psi)), dim=-1)
+                B = torch.stack((s * torch.cos(alpha + chi), s * torch.sin(alpha + chi)), dim=-1)
+                C = torch.stack((-s * torch.cos(alpha - chi), -s * torch.sin(alpha - chi)), dim=-1)
+                D = torch.stack((c * torch.cos(alpha - psi), c * torch.sin(alpha - psi)), dim=-1)
+                self.twiddle = nn.Parameter(torch.stack((torch.stack((A, B), dim=-1),
+                                                         torch.stack((C, D), dim=-1)), dim=-1))
             else:
-                if not complex:
-                    theta = torch.rand(rank, size - 1) * math.pi * 2
-                    c, s = torch.cos(theta), torch.sin(theta)
-                    det = torch.randint(0, 2, (rank, size - 1), dtype=c.dtype) * 2 - 1  # Rotation (+1) or reflection (-1)
-                    self.twiddle = nn.Parameter(torch.stack((torch.stack((det * c, -det * s), dim=-1),
-                                                             torch.stack((s, c), dim=-1)), dim=-1))
-                else:
-                    # Sampling from the Haar measure on U(2) is a bit subtle.
-                    # Using the parameterization here: http://home.lu.lv/~sd20008/papers/essays/Random%20unitary%20[paper].pdf
-                    phi = torch.asin(torch.sqrt(torch.rand(rank, size - 1)))
-                    c, s = torch.cos(phi), torch.sin(phi)
-                    alpha, psi, chi = torch.randn(3, rank, size - 1) * math.pi * 2
-                    A = torch.stack((c * torch.cos(alpha + psi), c * torch.sin(alpha + psi)), dim=-1)
-                    B = torch.stack((s * torch.cos(alpha + chi), s * torch.sin(alpha + chi)), dim=-1)
-                    C = torch.stack((-s * torch.cos(alpha - chi), -s * torch.sin(alpha - chi)), dim=-1)
-                    D = torch.stack((c * torch.cos(alpha - psi), c * torch.sin(alpha - psi)), dim=-1)
-                    self.twiddle = nn.Parameter(torch.stack((torch.stack((A, B), dim=-1),
-                                                             torch.stack((C, D), dim=-1)), dim=-1))
+                theta = torch.rand(rank, size - 1) * math.pi * 2
+                c, s = torch.cos(theta), torch.sin(theta)
+                det = torch.randint(0, 2, (rank, size - 1), dtype=c.dtype) * 2 - 1  # Rotation (+1) or reflection (-1)
+                self.twiddle = nn.Parameter(torch.stack((torch.stack((det * c, -det * s), dim=-1),
+                                                         torch.stack((s, c), dim=-1)), dim=-1))
         else:
             assert twiddle.shape == twiddle_shape, f'twiddle must have shape {twiddle_shape}'
             self.twiddle = twiddle
@@ -365,9 +384,19 @@ class Block2x2DiagRectangular(nn.Module):
         self.n_blocks = n_blocks
         self.tied_weight = tied_weight
         if tied_weight:
-            ABCD_shape = (stack, 2, 2, size // 2) if not complex else (stack, 2, 2, size // 2, 2)
+            ABCD_shape = (
+                (stack, 2, 2, size // 2, 2)
+                if complex
+                else (stack, 2, 2, size // 2)
+            )
+
         else:
-            ABCD_shape = (stack, n_blocks, 2, 2, size // 2) if not complex else (stack, n_blocks, 2, 2, size // 2, 2)
+            ABCD_shape = (
+                (stack, n_blocks, 2, 2, size // 2, 2)
+                if complex
+                else (stack, n_blocks, 2, 2, size // 2)
+            )
+
         scaling = 1.0 / 2 if complex else 1.0 / math.sqrt(2)
         if ABCD is None:
             self.ABCD = nn.Parameter(torch.randn(ABCD_shape) * scaling)
@@ -385,15 +414,42 @@ class Block2x2DiagRectangular(nn.Module):
             if not tied_weight: (stack, n_blocks, ..., size) if real or (stack, n_blocks, ..., size, 2) if complex
         """
         if self.tied_weight:
-            if not self.complex:
-                return (self.ABCD.unsqueeze(1) * input.view(self.stack, -1, 1, 2, self.size // 2)).sum(dim=-2).view(input.shape)
-            else:
-                return complex_mul(self.ABCD.unsqueeze(1), input.view(self.stack, -1, 1, 2, self.size // 2, 2)).sum(dim=-3).view(input.shape)
+            return (
+                complex_mul(
+                    self.ABCD.unsqueeze(1),
+                    input.view(self.stack, -1, 1, 2, self.size // 2, 2),
+                )
+                .sum(dim=-3)
+                .view(input.shape)
+                if self.complex
+                else (
+                    self.ABCD.unsqueeze(1)
+                    * input.view(self.stack, -1, 1, 2, self.size // 2)
+                )
+                .sum(dim=-2)
+                .view(input.shape)
+            )
+
         else:
-            if not self.complex:
-                return (self.ABCD.unsqueeze(2) * input.view(self.stack, self.n_blocks, -1, 1, 2, self.size // 2)).sum(dim=-2).view(input.shape)
-            else:
-                return complex_mul(self.ABCD.unsqueeze(2), input.view(self.stack, self.n_blocks, -1, 1, 2, self.size // 2, 2)).sum(dim=-3).view(input.shape)
+            return (
+                complex_mul(
+                    self.ABCD.unsqueeze(2),
+                    input.view(
+                        self.stack, self.n_blocks, -1, 1, 2, self.size // 2, 2
+                    ),
+                )
+                .sum(dim=-3)
+                .view(input.shape)
+                if self.complex
+                else (
+                    self.ABCD.unsqueeze(2)
+                    * input.view(
+                        self.stack, self.n_blocks, -1, 1, 2, self.size // 2
+                    )
+                )
+                .sum(dim=-2)
+                .view(input.shape)
+            )
 
 
 class Block2x2DiagProductRectangular(nn.Module):
@@ -417,10 +473,12 @@ class Block2x2DiagProductRectangular(nn.Module):
             self.factors = nn.ModuleList([Block2x2DiagRectangular(in_size_, stack=self.stack, complex=complex, n_blocks=self.in_size_extended // in_size_, tied_weight=tied_weight)
                                           for in_size_ in in_sizes])
         if bias:
-            if not self.complex:
-                self.bias = nn.Parameter(torch.Tensor(out_size))
-            else:
-                self.bias = nn.Parameter(torch.Tensor(out_size, 2))
+            self.bias = (
+                nn.Parameter(torch.Tensor(out_size, 2))
+                if self.complex
+                else nn.Parameter(torch.Tensor(out_size))
+            )
+
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -437,21 +495,61 @@ class Block2x2DiagProductRectangular(nn.Module):
             output: (..., out_size) if real or (..., out_size, 2) if complex
         """
         output = input.contiguous()
-        if self.in_size != self.in_size_extended:  # Zero-pad
-            if not self.complex:
-                output = torch.cat((output, torch.zeros(output.shape[:-1] + (self.in_size_extended - self.in_size, ), dtype=output.dtype, device=output.device)), dim=-1)
-            else:
-                output = torch.cat((output, torch.zeros(output.shape[:-2] + (self.in_size_extended - self.in_size, 2), dtype=output.dtype, device=output.device)), dim=-2)
+        if self.in_size != self.in_size_extended:
+            output = (
+                torch.cat(
+                    (
+                        output,
+                        torch.zeros(
+                            output.shape[:-2]
+                            + (self.in_size_extended - self.in_size, 2),
+                            dtype=output.dtype,
+                            device=output.device,
+                        ),
+                    ),
+                    dim=-2,
+                )
+                if self.complex
+                else torch.cat(
+                    (
+                        output,
+                        torch.zeros(
+                            output.shape[:-1]
+                            + (self.in_size_extended - self.in_size,),
+                            dtype=output.dtype,
+                            device=output.device,
+                        ),
+                    ),
+                    dim=-1,
+                )
+            )
+
         output = output.unsqueeze(0).expand((self.stack, ) + output.shape)
         for factor in self.factors[::-1]:
-            if not self.complex:
-                output = factor(output.view(output.shape[:-1] + (-1, factor.size))).view(output.shape)
-            else:
-                output = factor(output.view(output.shape[:-2] + (-1, factor.size, 2))).view(output.shape)
-        if not self.complex:
-            output = output.permute(tuple(range(1, output.dim() - 1)) + (0, -1)).reshape(input.shape[:-1] + (self.stack * self.in_size_extended, ))[..., :self.out_size]
-        else:
-            output = output.permute(tuple(range(1, output.dim() - 2)) + (0, -2, -1)).reshape(input.shape[:-2] + (self.stack * self.in_size_extended, 2))[..., :self.out_size, :]
+            output = (
+                factor(output.view(output.shape[:-2] + (-1, factor.size, 2))).view(
+                    output.shape
+                )
+                if self.complex
+                else factor(
+                    output.view(output.shape[:-1] + (-1, factor.size))
+                ).view(output.shape)
+            )
+
+        output = (
+            output.permute(
+                tuple(range(1, output.dim() - 2)) + (0, -2, -1)
+            ).reshape(input.shape[:-2] + (self.stack * self.in_size_extended, 2))[
+                ..., : self.out_size, :
+            ]
+            if self.complex
+            else output.permute(
+                tuple(range(1, output.dim() - 1)) + (0, -1)
+            ).reshape(input.shape[:-1] + (self.stack * self.in_size_extended,))[
+                ..., : self.out_size
+            ]
+        )
+
         if hasattr(self, 'bias'):
             output += self.bias
         return output
@@ -475,7 +573,7 @@ class Block2x2DiagBmm(nn.Module):
         self.size = size
         self.complex = complex
         self.mul_op = complex_mul if complex else operator.mul
-        ABCD_shape = (size // 2, 2, 2) if not complex else (2, 2, size // 2, 2)
+        ABCD_shape = (2, 2, size // 2, 2) if complex else (size // 2, 2, 2)
         scaling = 1.0 / 2 if complex else 1.0 / math.sqrt(2)
         if ABCD is None:
             self.ABCD = nn.Parameter(torch.randn(ABCD_shape) * scaling)
@@ -490,13 +588,13 @@ class Block2x2DiagBmm(nn.Module):
         Return:
             output: (size, batch_size) if real or (size, batch_size, 2) if complex
         """
-        if not self.complex:
-            # return ((self.ABCD * input.view(input.shape[:-1] + (1, 2, self.size // 2))).sum(dim=-2)).view(input.shape)
-            # return butterfly_factor_mult(self.ABCD, input.view(-1, 2, self.size // 2)).view(input.shape)
-            return (self.ABCD @ input.view(self.size // 2, 2, -1)).view(input.shape)
-        else:
-            # return (self.mul_op(self.ABCD, input.view(input.shape[:-2] + (1, 2, self.size // 2, 2))).sum(dim=-3)).view(input.shape)
-            return butterfly_factor_mult(self.ABCD, input.view(-1, 2, self.size // 2, 2)).view(input.shape)
+        return (
+            butterfly_factor_mult(
+                self.ABCD, input.view(-1, 2, self.size // 2, 2)
+            ).view(input.shape)
+            if self.complex
+            else (self.ABCD @ input.view(self.size // 2, 2, -1)).view(input.shape)
+        )
 
 
 class Block2x2DiagProductBmm(nn.Module):
@@ -523,10 +621,14 @@ class Block2x2DiagProductBmm(nn.Module):
 
         output = input.t()[self.br_perm]
         for factor in self.factors[::-1]:
-            if not self.complex:
-                output = factor(output.view((factor.size, -1))).view(output.shape)
-            else:
-                output = factor(output.view(output.shape[:-2] + (-1, factor.size, 2))).view(output.shape)
+            output = (
+                factor(output.view(output.shape[:-2] + (-1, factor.size, 2))).view(
+                    output.shape
+                )
+                if self.complex
+                else factor(output.view((factor.size, -1))).view(output.shape)
+            )
+
         return output[self.br_perm].t()
 
 
@@ -548,10 +650,7 @@ class BlockPerm(nn.Module):
         assert size % 2 == 0, 'size must be even'
         self.size = size
         self.complex = complex
-        if logit is None:
-            self.logit = nn.Parameter(torch.randn(3))
-        else:
-            self.logit = logit
+        self.logit = nn.Parameter(torch.randn(3)) if logit is None else logit
         self.reverse_perm = nn.Parameter(torch.arange(self.size // 2 - 1, -1, -1), requires_grad=False)
 
     def forward(self, input):
@@ -563,23 +662,16 @@ class BlockPerm(nn.Module):
         """
         prob = torch.sigmoid(self.logit)
         output = input
-        if not self.complex:
-            # There's a lot of complicated logic here buried under the reshape's and unsqueeze's and so on
-            # First step: weighted mean of identity permutation and permutation that yields [even, odd]
-            # output = ((1 - prob[0]) * output.view(-1, 2, self.size // 2) + prob[0] * output.view(-1, self.size // 2, 2).transpose(-1, -2)).view(-1, self.size)
-            output = permutation_factor_even_odd_mult(prob[:1], output.view(-1, self.size))
-            # output = output.view(-1, 2, self.size // 2)
-            # Second step: weighted mean of identity permutation and permutation that reverses the first and the second half
-            # output  = output.reshape(output.shape[:-1] + (2, self.size // 2))
-            # output = (((1 - prob[1:]).unsqueeze(-1) * output + prob[1:].unsqueeze(-1) * output.flip(-1))).reshape(output.shape[:-2] + (self.size, ))
-            # output = (((1 - prob[1:]).unsqueeze(-1) * output + prob[1:].unsqueeze(-1) * output[..., self.reverse_perm])).reshape(output.shape[:-2] + (self.size, ))
-            output = permutation_factor_reverse_mult(prob[1:], output)
-            # output = output.reshape(input.shape)
-        else:
-            # output = (1 - prob[0]) * output.reshape(output.shape[:-2] + (2, self.size // 2, 2)) + prob[0] * output.reshape(output.shape[:-2] + (self.size // 2, 2, 2)).transpose(-2, -3)
-            output = permutation_factor_even_odd_mult(prob[:1], output.view(-1, self.size))
-            # output = (((1 - prob[1:]).unsqueeze(-1).unsqueeze(-1) * output + prob[1:].unsqueeze(-1).unsqueeze(-1) * output.flip(-2))).reshape(output.shape[:-3] + (self.size, 2))
-            output = permutation_factor_reverse_mult(prob[1:], output)
+        # There's a lot of complicated logic here buried under the reshape's and unsqueeze's and so on
+        # First step: weighted mean of identity permutation and permutation that yields [even, odd]
+        # output = ((1 - prob[0]) * output.view(-1, 2, self.size // 2) + prob[0] * output.view(-1, self.size // 2, 2).transpose(-1, -2)).view(-1, self.size)
+        output = permutation_factor_even_odd_mult(prob[:1], output.view(-1, self.size))
+        # output = output.view(-1, 2, self.size // 2)
+        # Second step: weighted mean of identity permutation and permutation that reverses the first and the second half
+        # output  = output.reshape(output.shape[:-1] + (2, self.size // 2))
+        # output = (((1 - prob[1:]).unsqueeze(-1) * output + prob[1:].unsqueeze(-1) * output.flip(-1))).reshape(output.shape[:-2] + (self.size, ))
+        # output = (((1 - prob[1:]).unsqueeze(-1) * output + prob[1:].unsqueeze(-1) * output[..., self.reverse_perm])).reshape(output.shape[:-2] + (self.size, ))
+        output = permutation_factor_reverse_mult(prob[1:], output)
         return output.view(input.shape)
 
     def argmax(self):
@@ -589,8 +681,15 @@ class BlockPerm(nn.Module):
         """
         logit = nn.Parameter(torch.where(self.logit >= 0, torch.tensor(float('inf'), device=self.logit.device), torch.tensor(float('-inf'), device=self.logit.device)))
         argmax_instance = self.__class__(self.size, logit, complex=False)
-        p = argmax_instance.forward(torch.arange(self.size, dtype=torch.float, device=self.logit.device)).round().long()
-        return p
+        return (
+            argmax_instance.forward(
+                torch.arange(
+                    self.size, dtype=torch.float, device=self.logit.device
+                )
+            )
+            .round()
+            .long()
+        )
 
 
 class BlockPermProduct(nn.Module):
@@ -621,10 +720,16 @@ class BlockPermProduct(nn.Module):
         """
         output = input.contiguous()
         for factor in self.factors[::-1]:
-            if not self.complex:
-                output = factor(output.view(output.shape[:-1] + (-1, factor.size))).view(output.shape)
-            else:
-                output = factor(output.view(output.shape[:-2] + (-1, factor.size, 2))).view(output.shape)
+            output = (
+                factor(output.view(output.shape[:-2] + (-1, factor.size, 2))).view(
+                    output.shape
+                )
+                if self.complex
+                else factor(
+                    output.view(output.shape[:-1] + (-1, factor.size))
+                ).view(output.shape)
+            )
+
         return output
 
     def argmax(self):
@@ -650,7 +755,11 @@ class FixedPermutation(nn.Module):
         self.complex = complex
 
     def forward(self, input):
-        return input[..., self.permutation] if not self.complex else input[..., self.permutation, :]
+        return (
+            input[..., self.permutation, :]
+            if self.complex
+            else input[..., self.permutation]
+        )
 
 
 

@@ -2,7 +2,10 @@ import os, sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 # Add to $PYTHONPATH in addition to sys.path so that ray workers can see
-os.environ['PYTHONPATH'] = project_root + ":" + os.environ.get('PYTHONPATH', '')
+os.environ['PYTHONPATH'] = f"{project_root}:" + os.environ.get(
+    'PYTHONPATH', ''
+)
+
 
 import argparse
 import torchvision.models as torch_models

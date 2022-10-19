@@ -42,12 +42,13 @@ def get_extensions():
         if WITH_CUDA and path.exists():
             sources.append(str(path))
         extension = Extension(
-            'torch_butterfly._' + name,
+            f'torch_butterfly._{name}',
             sources,
             include_dirs=[extensions_dir],
             define_macros=define_macros,
             extra_compile_args=extra_compile_args,
         )
+
         extensions.append(extension)
 
     return extensions
@@ -77,11 +78,11 @@ setup(
     install_requires=install_requires,
     setup_requires=setup_requires,
     tests_require=tests_require,
-    ext_modules=get_extensions() if not BUILD_DOCS else [],
+    ext_modules=[] if BUILD_DOCS else get_extensions(),
     cmdclass={
-        'build_ext':
-        BuildExtension.with_options(no_python_abi_suffix=True, use_ninja=True)
+        'build_ext': BuildExtension.with_options(
+            no_python_abi_suffix=True, use_ninja=True
+        )
     },
-    # packages=find_packages(),
     packages=['torch_butterfly'],
 )

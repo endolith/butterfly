@@ -54,18 +54,12 @@ class AverageMeter(object):
         self.val += val * n
 
     def get_val(self):
-        if self.ret_val:
-            if self.n == 0:
-                return 0.0
-            return self.val / self.n
-        else:
+        if not self.ret_val:
             return None
+        return 0.0 if self.n == 0 else self.val / self.n
 
     def get_last(self):
-        if self.ret_last:
-            return self.last
-        else:
-            return None
+        return self.last if self.ret_last else None
 
 
 class RunningMeter(object):
@@ -104,7 +98,7 @@ class Logger(object):
 
     def register_metric(self, metric_name, meter, log_level=0):
         if self.verbose:
-            print("Registering metric: {}".format(metric_name))
+            print(f"Registering metric: {metric_name}")
         self.metrics[metric_name] = {'meter' : meter, 'level' : log_level}
 
     def log_metric(self, metric_name, val, n=1):
@@ -190,22 +184,22 @@ class JsonBackend(object):
         pass
 
     def log_epoch_metric(self, name, val):
-        if not name in self.json_log['epoch'].keys():
+        if name not in self.json_log['epoch'].keys():
             self.json_log['epoch'][name] = []
 
         self.json_log['epoch'][name].append(val)
 
-        if name != 'ep':
-            if name in self.json_log['iter'].keys():
-                self.json_log['iter'][name].append([])
-        else:
-            if not 'it' in self.json_log['iter'].keys():
+        if name == 'ep':
+            if 'it' not in self.json_log['iter'].keys():
                 self.json_log['iter']['it'] = []
 
             self.json_log['iter']['it'].append([])
 
+        elif name in self.json_log['iter'].keys():
+            self.json_log['iter'][name].append([])
+
     def log_iteration_metric(self, name, val):
-        if not (name in self.json_log['iter'].keys()):
+        if name not in self.json_log['iter'].keys():
             self.json_log['iter'][name] = [[]]
 
         self.json_log['iter'][name][-1].append(val)
@@ -227,7 +221,7 @@ class StdOut1LBackend(object):
         self.mode = 'train'
 
     def log_run_tag(self, name, val):
-        print("{} : {}".format(name, val))
+        print(f"{name} : {val}")
 
     def log_end_epoch(self):
         print("Summary Epoch: {}/{};\t{}".format(
@@ -253,7 +247,7 @@ class StdOut1LBackend(object):
             self.epoch_metrics[name] = value
 
     def log_iteration_metric(self, name, value):
-        if name == 'it' or name == 'val.it':
+        if name in ['it', 'val.it']:
             self.mode = 'train' if name == 'it' else 'val'
             self.iteration = value
         else:
@@ -271,7 +265,7 @@ class StdOutBackend(object):
         self.epoch = 0
 
     def log_run_tag(self, name, val):
-        print("{} : {}".format(name, val))
+        print(f"{name} : {val}")
 
     def log_end_epoch(self):
         pass
@@ -287,7 +281,7 @@ class StdOutBackend(object):
             print("Summary Epoch: {};  {} = {:.3f}".format(self.epoch, name, value))
 
     def log_iteration_metric(self, name, value):
-        if name == 'it' or name == 'val.it':
+        if name in ['it', 'val.it']:
             self.iteration = value
         else:
             print("Epoch: {} Iteration: {};  {} = {:.3f}".format(self.epoch, self.iteration, name, value))

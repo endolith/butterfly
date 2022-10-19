@@ -42,12 +42,25 @@ class ButterflyMultTest(unittest.TestCase):
         batch_size = 10
         n = 4096
         nstack = 2
-        for device in ['cpu'] + ([] if not torch.cuda.is_available() else ['cuda']):
+        for device in ['cpu'] + (['cuda'] if torch.cuda.is_available() else []):
             for complex in [False, True]:
                 for increasing_stride in [True, False]:
-                    scaling = 1 / math.sqrt(2) if not complex else 1 / 2
-                    twiddle = torch.randn((nstack, n - 1, 2, 2) + (() if not complex else (2, )), requires_grad=True, device=device) * scaling
-                    input = torch.randn((batch_size, nstack, n) + (() if not complex else (2, )), requires_grad=True, device=twiddle.device)
+                    scaling = 1 / 2 if complex else 1 / math.sqrt(2)
+                    twiddle = (
+                        torch.randn(
+                            (nstack, n - 1, 2, 2) + ((2,) if complex else ()),
+                            requires_grad=True,
+                            device=device,
+                        )
+                        * scaling
+                    )
+
+                    input = torch.randn(
+                        (batch_size, nstack, n) + ((2,) if complex else ()),
+                        requires_grad=True,
+                        device=twiddle.device,
+                    )
+
                     output = butterfly_mult(twiddle, input, increasing_stride)
                     output_torch = butterfly_mult_torch(twiddle, input, increasing_stride)
                     self.assertTrue(torch.allclose(output, output_torch, rtol=self.rtol, atol=self.atol),
@@ -62,17 +75,31 @@ class ButterflyMultTest(unittest.TestCase):
                                     (((d_twiddle - d_twiddle_torch) / d_twiddle_torch).abs().max().item(), device, complex, increasing_stride))
 
     def test_butterfly_untied(self):
+        nstack = 2
         for batch_size, n in [(10, 4096), (8192, 256)]:  # Test size smaller than 1024 and large batch size for race conditions
             m = int(math.log2(n))
-            nstack = 2
-            for device in ['cpu'] + ([] if not torch.cuda.is_available() else ['cuda']):
+            for device in ['cpu'] + (['cuda'] if torch.cuda.is_available() else []):
                 for complex in [False, True]:
                     for increasing_stride in [True, False]:
                         if batch_size > 1024 and (device == 'cpu' or complex):
                             continue
-                        scaling = 1 / math.sqrt(2) if not complex else 1 / 2
-                        twiddle = torch.randn((nstack, m, n // 2, 2, 2) + (() if not complex else (2, )), requires_grad=True, device=device) * scaling
-                        input = torch.randn((batch_size, nstack, n) + (() if not complex else (2, )), requires_grad=True, device=twiddle.device)
+                        scaling = 1 / 2 if complex else 1 / math.sqrt(2)
+                        twiddle = (
+                            torch.randn(
+                                (nstack, m, n // 2, 2, 2)
+                                + ((2,) if complex else ()),
+                                requires_grad=True,
+                                device=device,
+                            )
+                            * scaling
+                        )
+
+                        input = torch.randn(
+                            (batch_size, nstack, n) + ((2,) if complex else ()),
+                            requires_grad=True,
+                            device=twiddle.device,
+                        )
+
                         output = butterfly_mult_untied(twiddle, input, increasing_stride)
                         output_torch = butterfly_mult_untied_torch(twiddle, input, increasing_stride)
                         self.assertTrue(torch.allclose(output, output_torch, rtol=self.rtol, atol=self.atol),
@@ -96,9 +123,9 @@ class ButterflyMultTest(unittest.TestCase):
                                          (batch_size, n), device, complex, increasing_stride))
 
     def test_butterfly_untied_eval(self):
+        nstack = 2
         for batch_size, n in [(1, 256), (2, 512), (8, 512), (10, 512)]:
             m = int(math.log2(n))
-            nstack = 2
             for device in ['cpu']:
                 for complex in [ True]:
                     for increasing_stride in [True, False]:
@@ -111,10 +138,10 @@ class ButterflyMultTest(unittest.TestCase):
                                         ((output - output_torch).abs().max().item(), device, complex, increasing_stride))
 
     def test_butterfly_ortho_tied(self):
+        nstack = 2
         for batch_size, n in [(10, 4096), (8192, 256)]:  # Test size smaller than 1024 and large batch size for race conditions
             m = int(math.log2(n))
-            nstack = 2
-            for device in ['cpu'] + ([] if not torch.cuda.is_available() else ['cuda']):
+            for device in ['cpu'] + (['cuda'] if torch.cuda.is_available() else []):
                 for increasing_stride in [True, False]:
                     if batch_size > 1024 and (device == 'cpu'):
                         continue
@@ -135,10 +162,10 @@ class ButterflyMultTest(unittest.TestCase):
                                         (batch_size, n), device, increasing_stride))
 
     def test_butterfly_ortho_untied(self):
+        nstack = 2
         for batch_size, n in [(10, 4096), (8192, 256)]:  # Test size smaller than 1024 and large batch size for race conditions
             m = int(math.log2(n))
-            nstack = 2
-            for device in ['cpu'] + ([] if not torch.cuda.is_available() else ['cuda']):
+            for device in ['cpu'] + (['cuda'] if torch.cuda.is_available() else []):
                 for increasing_stride in [True, False]:
                     if batch_size > 1024 and (device == 'cpu'):
                         continue
@@ -159,11 +186,11 @@ class ButterflyMultTest(unittest.TestCase):
                                         (batch_size, n), device, increasing_stride))
 
     def test_bbt_untied(self):
+        nstack = 2
         for batch_size, n in [(2048, 512), (10, 4096)]:
             for nblocks in list(range(1, 4)) + [10, 14]:  # Test nblocks >= 7
                 m = int(math.log2(n))
-                nstack = 2
-                for device in ([] if not torch.cuda.is_available() else ['cuda']) + ['cpu']:
+                for device in (['cuda'] if torch.cuda.is_available() else []) + ['cpu']:
                     if batch_size > 1024 and device == 'cpu':
                         continue
                     scaling = 1 / 2
@@ -192,11 +219,11 @@ class ButterflyMultTest(unittest.TestCase):
                                      (batch_size, n), nblocks, device))
 
     def test_bbt_ortho_untied(self):
+        nstack = 2
         for batch_size, n in [(2048, 512), (10, 4096)]:
             for nblocks in list(range(1, 4)) + [10, 14]:  # Test nblocks >= 7
                 m = int(math.log2(n))
-                nstack = 2
-                for device in ([] if not torch.cuda.is_available() else ['cuda']) + ['cpu']:
+                for device in (['cuda'] if torch.cuda.is_available() else []) + ['cpu']:
                     if batch_size > 1024 and device == 'cpu':
                         continue
                     twiddle = torch.rand((nstack, nblocks * 2 * m, n // 2), requires_grad=True, device=device) * 2 * math.pi
@@ -229,12 +256,25 @@ class ButterflyMultTest(unittest.TestCase):
         batch_size = 10
         n = 4096
         nstack = 1  # Does not support nstack
-        for device in ['cpu'] + ([] if not torch.cuda.is_available() else ['cuda']):
+        for device in ['cpu'] + (['cuda'] if torch.cuda.is_available() else []):
             for complex in [False, True]:
                 for increasing_stride in [True, False]:
-                    scaling = 1 / math.sqrt(2) if not complex else 1 / 2
-                    twiddle = torch.randn((nstack, n - 1, 2, 2) + (() if not complex else (2, )), requires_grad=True, device=device) * scaling
-                    input = torch.randn((batch_size, nstack, n) + (() if not complex else (2, )), requires_grad=True, device=twiddle.device)
+                    scaling = 1 / 2 if complex else 1 / math.sqrt(2)
+                    twiddle = (
+                        torch.randn(
+                            (nstack, n - 1, 2, 2) + ((2,) if complex else ()),
+                            requires_grad=True,
+                            device=device,
+                        )
+                        * scaling
+                    )
+
+                    input = torch.randn(
+                        (batch_size, nstack, n) + ((2,) if complex else ()),
+                        requires_grad=True,
+                        device=twiddle.device,
+                    )
+
                     output = butterfly_mult_factors(twiddle.squeeze(0), input.squeeze(1), increasing_stride=increasing_stride)
                     output_torch = butterfly_mult_torch(twiddle, input, increasing_stride=increasing_stride).squeeze(1)
                     self.assertTrue(torch.allclose(output, output_torch, rtol=self.rtol, atol=self.atol),
@@ -318,9 +358,9 @@ class ButterflyMultTest(unittest.TestCase):
                                 (((d_twiddle - d_twiddle_torch) / d_twiddle_torch).abs().max().item(), device, nblocks, c_out))
 
     def test_butterfly_untied_fast(self):
+        nstack = 1
         for batch_size, n in [(2048, 512)]:
             m = int(math.log2(n))
-            nstack = 1
             # for device in ['cpu'] + ([] if not torch.cuda.is_available() else ['cuda']):
             for device in ['cuda']:
                 # for complex in [False, True]:
@@ -329,13 +369,27 @@ class ButterflyMultTest(unittest.TestCase):
                     # for increasing_stride in [False]:
                         if batch_size > 1024 and (device == 'cpu' or complex):
                             continue
-                        scaling = 1 / math.sqrt(2) if not complex else 1 / 2
-                        twiddle = torch.randn((nstack, m, n // 2, 2, 2) + (() if not complex else (2, )), requires_grad=True, device=device) * scaling
+                        scaling = 1 / 2 if complex else 1 / math.sqrt(2)
+                        twiddle = (
+                            torch.randn(
+                                (nstack, m, n // 2, 2, 2)
+                                + ((2,) if complex else ()),
+                                requires_grad=True,
+                                device=device,
+                            )
+                            * scaling
+                        )
+
                         # twiddle = torch.arange(2 * n, dtype=torch.float, device=device, requires_grad=True).reshape(n // 2, 2, 2).unsqueeze(0).repeat(m, 1, 1, 1).unsqueeze(0)
                         twiddle_fast = twiddle_normal_to_fast_format(twiddle)
                         if not increasing_stride:
                             twiddle_fast = twiddle_fast.flip(1)
-                        input = torch.randn((batch_size, nstack, n) + (() if not complex else (2, )), requires_grad=True, device=twiddle.device)
+                        input = torch.randn(
+                            (batch_size, nstack, n) + ((2,) if complex else ()),
+                            requires_grad=True,
+                            device=twiddle.device,
+                        )
+
                         # input = torch.arange(n, dtype=torch.float, device=device, requires_grad=True).unsqueeze(0).unsqueeze(1).expand(batch_size, -1, -1)
                         output = butterfly_multiply_untied_forward_fast(twiddle_fast, input, increasing_stride)
                         # output_old = butterfly_mult_untied_torch(twiddle, input, increasing_stride)
@@ -368,12 +422,12 @@ class ButterflyMultTest(unittest.TestCase):
                                          (batch_size, n), device, complex, increasing_stride))
 
     def test_butterfly_untied_max5_fast(self):
+        nstack = 1
         # for batch_size, n in [(2048, 256), (32768, 256)]:
         for batch_size, n in [(2048, 512)]:
         # for batch_size, n in [(32768, 2), (32768, 4), (32768, 8), (32768, 16), (32668, 32), (2048, 64), (2048, 128), (2048, 256), (2048, 512), (2048, 1024)]:
         # for batch_size, n in [(1, 512)]:
             m = int(math.log2(n))
-            nstack = 1
             # for device in ['cpu'] + ([] if not torch.cuda.is_available() else ['cuda']):
             for device in ['cuda']:
                 # for complex in [False, True]:
@@ -382,8 +436,17 @@ class ButterflyMultTest(unittest.TestCase):
                     # for increasing_stride in [True]:
                         if batch_size > 1024 and (device == 'cpu' or complex):
                             continue
-                        scaling = 1 / math.sqrt(2) if not complex else 1 / 2
-                        twiddle = torch.randn((nstack, m, n // 2, 2, 2) + (() if not complex else (2, )), requires_grad=True, device=device) * scaling
+                        scaling = 1 / 2 if complex else 1 / math.sqrt(2)
+                        twiddle = (
+                            torch.randn(
+                                (nstack, m, n // 2, 2, 2)
+                                + ((2,) if complex else ()),
+                                requires_grad=True,
+                                device=device,
+                            )
+                            * scaling
+                        )
+
                         # twiddle = torch.arange(2 * n, dtype=torch.float, device=device, requires_grad=True).reshape(n // 2, 2, 2).unsqueeze(0).repeat(m, 1, 1, 1).unsqueeze(0)
                         # twiddle = torch.arange(m * n * 2, dtype=torch.float, device=device, requires_grad=True).reshape(m, n // 2, 2, 2).unsqueeze(0)
                         # twiddle_fast = twiddle_normal_to_fast_format(twiddle)
@@ -391,7 +454,12 @@ class ButterflyMultTest(unittest.TestCase):
                         # twiddle_fast = torch.randn((nstack, m, 2, n), requires_grad=True, device=device) * scaling
                         if not increasing_stride:
                             twiddle_fast = twiddle_fast.flip(1)
-                        input = torch.randn((batch_size, nstack, n) + (() if not complex else (2, )), requires_grad=True, device=twiddle.device)
+                        input = torch.randn(
+                            (batch_size, nstack, n) + ((2,) if complex else ()),
+                            requires_grad=True,
+                            device=twiddle.device,
+                        )
+
                         # input = torch.randn((n, batch_size) + (() if not complex else (2, )), requires_grad=True, device=twiddle.device).t().unsqueeze(1)
                         # input = torch.arange(n, dtype=torch.float, device=device, requires_grad=True).unsqueeze(0).unsqueeze(1).expand(batch_size, -1, -1)
                         output = butterfly_multiply_untied_forward_max5_fast(twiddle_fast, input, increasing_stride)
@@ -425,10 +493,10 @@ class ButterflyMultTest(unittest.TestCase):
                                          (batch_size, n), device, complex, increasing_stride))
 
     def test_butterfly_bbs_untied_fast(self):
+        nstack = 1
+        nblocks = 3
         for batch_size, n in [(2048, 512)]:
             m = int(math.log2(n))
-            nstack = 1
-            nblocks = 3
             # for device in ['cpu'] + ([] if not torch.cuda.is_available() else ['cuda']):
             for device in ['cuda']:
                 if batch_size > 1024 and (device == 'cpu'):
@@ -473,10 +541,10 @@ class ButterflyMultTest(unittest.TestCase):
 
 
     def test_butterfly_bbs_untied_max5_fast(self):
+        nstack = 1
+        nblocks = 3
         for batch_size, n in [(2048, 512)]:
             m = int(math.log2(n))
-            nstack = 1
-            nblocks = 3
             # for device in ['cpu'] + ([] if not torch.cuda.is_available() else ['cuda']):
             for device in ['cuda']:
                 if batch_size > 1024 and (device == 'cpu'):
@@ -521,9 +589,9 @@ class ButterflyMultTest(unittest.TestCase):
 
 
     def test_butterfly_ortho_untied_fast(self):
+        nstack = 1
         for batch_size, n in [(2048, 4096)]:
             m = int(math.log2(n))
-            nstack = 1
             # for device in ['cpu'] + ([] if not torch.cuda.is_available() else ['cuda']):
             for device in ['cuda']:
                 for increasing_stride in [True, False]:
@@ -554,10 +622,10 @@ class ButterflyMultTest(unittest.TestCase):
                                      (batch_size, n), device, increasing_stride))
 
     def test_butterfly_odo_untied_fast(self):
+        nstack = 1
+        nblocks = 4
         for batch_size, n in [(2048, 512)]:
             m = int(math.log2(n))
-            nstack = 1
-            nblocks = 4
             # for device in ['cpu'] + ([] if not torch.cuda.is_available() else ['cuda']):
             for device in ['cuda']:
                 if batch_size > 1024 and (device == 'cpu'):

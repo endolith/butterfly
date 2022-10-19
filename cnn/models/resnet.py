@@ -113,12 +113,28 @@ class ResNet(nn.Module):
         self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1, is_structured=self.is_structured[0])
         self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2, is_structured=self.is_structured[1])
         # Only stacking butterflies in the 3rd layer for now
-        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2, is_structured=self.is_structured[2],
-                                       structure_type=structure_type, expansion=self.butterfly_expansion[2],
-                                       **{**kwargs, **({'rank': self.rank[2]} if structure_type=='LR' else {})})
-        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2, is_structured=self.is_structured[3],
-                                       structure_type=structure_type, expansion=self.butterfly_expansion[3],
-                                       **{**kwargs, **({'rank': self.rank[3]} if structure_type=='LR' else {})})
+        self.layer3 = self._make_layer(
+            block,
+            256,
+            num_blocks[2],
+            stride=2,
+            is_structured=self.is_structured[2],
+            structure_type=structure_type,
+            expansion=self.butterfly_expansion[2],
+            **kwargs | ({'rank': self.rank[2]} if structure_type == 'LR' else {})
+        )
+
+        self.layer4 = self._make_layer(
+            block,
+            512,
+            num_blocks[3],
+            stride=2,
+            is_structured=self.is_structured[3],
+            structure_type=structure_type,
+            expansion=self.butterfly_expansion[3],
+            **kwargs | ({'rank': self.rank[3]} if structure_type == 'LR' else {})
+        )
+
         self.linear = nn.Linear(512*block.expansion, num_classes)
 
     def _make_layer(self, block, planes, num_blocks, stride, is_structured, structure_type='B', **kwargs):

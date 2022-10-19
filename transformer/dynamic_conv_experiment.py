@@ -1,10 +1,14 @@
 import os, sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
-sys.path.insert(1, project_root + '/fairseq')
-sys.path.insert(2, project_root + '/fairseq/scripts')
+sys.path.insert(1, f'{project_root}/fairseq')
+sys.path.insert(2, f'{project_root}/fairseq/scripts')
 # Add to $PYTHONPATH in addition to sys.path so that ray workers can see
-os.environ['PYTHONPATH'] = project_root + ":" + project_root + '/fairseq:' + project_root + '/fairseq/scripts' + os.environ.get('PYTHONPATH', '')
+os.environ['PYTHONPATH'] = (
+    f"{project_root}:{project_root}/fairseq:{project_root}/fairseq/scripts"
+    + os.environ.get('PYTHONPATH', '')
+)
+
 
 import math
 from pathlib import Path
@@ -41,7 +45,7 @@ def evaluate_translation(gen_args):
     sys.stderr.write(err)
     sys.stdout.write(out)
     m = re.search(r'BLEU4 = ([-+]?\d*\.\d+|\d+),', out)
-    return None, float(m.group(1))  # Return a pair to be compatible with generate_translation
+    return None, float(m[1])
 
 
 class TrainableModel(Trainable):
@@ -94,13 +98,20 @@ class TrainableModel(Trainable):
         print(f'Host: {socket.gethostname()}, save_dir: {self._save_dir}')
 
         avg_args = [
-            '--inputs=' + str(self._save_dir), '--num-epoch-checkpoints=10',
-            '--output=' + str(self._save_dir / 'model.pt')
+            f'--inputs={str(self._save_dir)}',
+            '--num-epoch-checkpoints=10',
+            '--output=' + str(self._save_dir / 'model.pt'),
         ]
-        gen_args = [project_root + '/fairseq/data-bin/iwslt14.tokenized.de-en',
-                    '--batch-size=64', '--remove-bpe',
-                    '--beam=4', '--quiet', '--no-progress-bar'
-                   ]
+
+        gen_args = [
+            f'{project_root}/fairseq/data-bin/iwslt14.tokenized.de-en',
+            '--batch-size=64',
+            '--remove-bpe',
+            '--beam=4',
+            '--quiet',
+            '--no-progress-bar',
+        ]
+
         self._train_args = train_args
         self._avg_args = avg_args
         self._gen_args = gen_args
@@ -128,13 +139,24 @@ class TrainableModel(Trainable):
             if self.device == 'cuda':
                 torch.cuda.empty_cache()
             _, BLEU_last_valid = evaluate_translation(
-                self._gen_args + ['--gen-subset=valid', '--path=' + str(last_model)])
+                self._gen_args
+                + ['--gen-subset=valid', f'--path={str(last_model)}']
+            )
+
             _, BLEU_ensm_valid = evaluate_translation(
-                self._gen_args + ['--gen-subset=valid', '--path=' + str(ensemble_model)])
+                self._gen_args
+                + ['--gen-subset=valid', f'--path={str(ensemble_model)}']
+            )
+
             _, BLEU_last_test = evaluate_translation(
-                self._gen_args + ['--gen-subset=test', '--path=' + str(last_model)])
+                self._gen_args + ['--gen-subset=test', f'--path={str(last_model)}']
+            )
+
             _, BLEU_ensm_test = evaluate_translation(
-                self._gen_args + ['--gen-subset=test', '--path=' + str(ensemble_model)])
+                self._gen_args
+                + ['--gen-subset=test', f'--path={str(ensemble_model)}']
+            )
+
         sys.stdout = stdout
         return {
             'final_bleu_valid': BLEU_last_valid,
@@ -144,8 +166,7 @@ class TrainableModel(Trainable):
         }
 
     def _save(self, checkpoint_dir):
-        checkpoint_path = os.path.join(checkpoint_dir, "model_optimizer.pth")
-        return checkpoint_path
+        return os.path.join(checkpoint_dir, "model_optimizer.pth")
 
     def _restore(self, checkpoint_path):
         pass
@@ -160,14 +181,13 @@ if slack_config_path.exists():
 
 @ex.config
 def default_config():
-    model = 'DynamicConv'  # Name of model, either 'DynamicConv' or 'Transformer'
     model_args = {}  # Arguments to be passed to the model, as a dictionary
-    encoder = ['D'] * (7 if model == 'DynamicConv' else 6)  # Layers in the encoder
+    encoder = ['D'] * (7 if True else 6)
     decoder = ['D'] * 6  # Layers in the decoder
     structure_lr_multiplier = 1.0  # Learning rate multiplier for structured parameters
     ntrials = 3  # Number of trials for hyperparameter tuning
     nmaxupdates = 50000  # Maximum number of updates
-    result_dir = project_root + '/transformer/results'  # Directory to store results
+    result_dir = f'{project_root}/transformer/results'
     cuda = torch.cuda.is_available()  # Whether to use GPU
     smoke_test = False  # Finish quickly for testing
 
@@ -177,27 +197,21 @@ def dynamic_conv_experiment(model, model_args, encoder, decoder, structure_lr_mu
                             nmaxupdates, ntrials, result_dir, cuda, smoke_test):
     # name=f"{model}_{model_args}_encoder_[{'-'.join(encoder)}]_decoder_[{'-'.join(decoder)}]_structlr_{structure_lr_multiplier}"
     name=f"{model}_{model_args}_encoder_[{'-'.join(encoder)}]_decoder_[{'-'.join(decoder)}]_structlr_grid"
-    config={
-        # 'lr': sample_from(lambda spec: math.exp(random.uniform(math.log(1e-4), math.log(1e-3)))),
-        # 'lr': grid_search([5e-4, 7e-4, 9e-4, 11e-4]),
-        # 'lr': grid_search([1e-4, 2.5e-4, 5e-4, 7.5e-4]),
+    config = {
         'lr': 5e-4,
-        # 'weight_decay': sample_from(lambda spec: math.exp(random.uniform(math.log(1e-6), math.log(5e-4)))) if model == 'DynamicConv' else 1e-4,
         'weight_decay': 1e-4,
-        # Transformer seems to need dropout 0.3
-        # 'dropout': sample_from(lambda spec: random.uniform(0.1, 0.3)) if model == 'DynamicConv' else 0.3,
         'dropout': 0.3,
         'seed': sample_from(lambda spec: random.randint(0, 1 << 16)),
-        'encoder': list(encoder),  # Need to copy @encoder as sacred created a read-only list
+        'encoder': list(encoder),
         'decoder': list(decoder),
-        # 'structure-lr-multiplier': structure_lr_multiplier,
         'structure-lr-multiplier': grid_search([0.25, 0.5, 1.0, 2.0, 4.0]),
         'device': 'cuda' if cuda else 'cpu',
         'model': {'name': model, 'args': model_args},
         'nmaxupdates': nmaxupdates,
-        'result_dir': result_dir + '/' + name
-     }
-    experiment = RayExperiment(
+        'result_dir': f'{result_dir}/{name}',
+    }
+
+    return RayExperiment(
         name=name,
         run=TrainableModel,
         local_dir=result_dir,
@@ -209,7 +223,6 @@ def dynamic_conv_experiment(model, model_args, encoder, decoder, structure_lr_mu
         stop={"training_iteration": 1},
         config=config,
     )
-    return experiment
 
 
 @ex.automain

@@ -43,7 +43,12 @@ class Butterfly(nn.Module):
         self.increasing_stride = increasing_stride
         assert nblocks >= 1
         self.nblocks = nblocks
-        dtype = torch.get_default_dtype() if not self.complex else real_dtype_to_complex[torch.get_default_dtype()]
+        dtype = (
+            real_dtype_to_complex[torch.get_default_dtype()]
+            if self.complex
+            else torch.get_default_dtype()
+        )
+
         twiddle_shape = (self.nstacks, nblocks, log_n, n // 2, 2, 2)
         if isinstance(init, torch.Tensor):
             self.init = None
@@ -144,10 +149,11 @@ class Butterfly(nn.Module):
             twiddle = twiddle.transpose(-1, -2).flip([1, 2])
             last_increasing_stride = self.increasing_stride != ((self.nblocks - 1) % 2 == 1)
             output = butterfly_multiply(twiddle, output, not last_increasing_stride, output_size)
-        if not subtwiddle:
-            return self.post_process(input, output)
-        else:
-            return self.post_process(input, output, out_size=output.size(-1))
+        return (
+            self.post_process(input, output, out_size=output.size(-1))
+            if subtwiddle
+            else self.post_process(input, output)
+        )
 
     def pre_process(self, input):
         # Reshape to (N, in_size)
@@ -202,9 +208,7 @@ class Butterfly(nn.Module):
         return new
 
     def extra_repr(self):
-        s = 'in_size={}, out_size={}, bias={}, complex={}, increasing_stride={}, init={}, nblocks={}'.format(
-            self.in_size, self.out_size, self.bias is not None, self.complex, self.increasing_stride, self.init, self.nblocks,)
-        return s
+        return f'in_size={self.in_size}, out_size={self.out_size}, bias={self.bias is not None}, complex={self.complex}, increasing_stride={self.increasing_stride}, init={self.init}, nblocks={self.nblocks}'
 
 
 class ButterflyUnitary(Butterfly):
@@ -294,18 +298,17 @@ class ButterflyUnitary(Butterfly):
             twiddle = twiddle.transpose(-1, -2).flip([1, 2])
             last_increasing_stride = self.increasing_stride != ((self.nblocks - 1) % 2 == 1)
             output = butterfly_multiply(twiddle, output, not last_increasing_stride, output_size)
-        if not subtwiddle:
-            return self.post_process(input, output)
-        else:
-            return self.post_process(input, output, out_size=output.size(-1))
+        return (
+            self.post_process(input, output, out_size=output.size(-1))
+            if subtwiddle
+            else self.post_process(input, output)
+        )
 
     __imul__ = None
     to_base4 = None
 
     def extra_repr(self):
-        s = 'in_size={}, out_size={}, bias={}, increasing_stride={}, nblocks={}'.format(
-            self.in_size, self.out_size, self.bias is not None, self.increasing_stride, self.nblocks,)
-        return s
+        return f'in_size={self.in_size}, out_size={self.out_size}, bias={self.bias is not None}, increasing_stride={self.increasing_stride}, nblocks={self.nblocks}'
 
 
 class ButterflyBmm(Butterfly):
@@ -339,7 +342,12 @@ class ButterflyBmm(Butterfly):
         self.increasing_stride = increasing_stride
         assert nblocks >= 1
         self.nblocks = nblocks
-        dtype = torch.get_default_dtype() if not self.complex else real_dtype_to_complex[torch.get_default_dtype()]
+        dtype = (
+            real_dtype_to_complex[torch.get_default_dtype()]
+            if self.complex
+            else torch.get_default_dtype()
+        )
+
         twiddle_shape = (self.matrix_batch * self.nstacks, nblocks, log_n, n // 2, 2, 2)
         if isinstance(init, torch.Tensor):
             self.init = None
@@ -392,6 +400,4 @@ class ButterflyBmm(Butterfly):
     to_base4 = None
 
     def extra_repr(self):
-        s = 'in_size={}, out_size={}, matrix_batch={}, bias={}, complex={}, increasing_stride={}, init={}, nblocks={}'.format(
-            self.in_size, self.out_size, self.matrix_batch, self.bias is not None, self.complex, self.increasing_stride, self.init, self.nblocks,)
-        return s
+        return f'in_size={self.in_size}, out_size={self.out_size}, matrix_batch={self.matrix_batch}, bias={self.bias is not None}, complex={self.complex}, increasing_stride={self.increasing_stride}, init={self.init}, nblocks={self.nblocks}'

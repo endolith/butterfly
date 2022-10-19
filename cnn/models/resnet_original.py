@@ -39,7 +39,7 @@ __all__ = ['ResNetOriginal', 'resnet20original', 'resnet32', 'resnet44', 'resnet
 def _weights_init(m):
     classname = m.__class__.__name__
     print(classname)
-    if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+    if isinstance(m, (nn.Linear, nn.Conv2d)):
         init.kaiming_normal(m.weight)
 
 class LambdaLayer(nn.Module):
@@ -143,10 +143,12 @@ def resnet1202():
 
 def test(net):
     import numpy as np
-    total_params = 0
+    total_params = sum(
+        np.prod(x.data.numpy().shape)
+        for x in filter(lambda p: p.requires_grad, net.parameters())
+    )
 
-    for x in filter(lambda p: p.requires_grad, net.parameters()):
-        total_params += np.prod(x.data.numpy().shape)
+
     print("Total number of params", total_params)
     print("Total layers", len(list(filter(lambda p: p.requires_grad and len(p.data.size())>1, net.parameters()))))
 

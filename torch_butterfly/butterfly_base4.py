@@ -30,7 +30,7 @@ class ButterflyBase4(Butterfly):
     """
 
     def __init__(self, *args, **kwargs):
-        init = kwargs.get('init', None)
+        init = kwargs.get('init')
         if (isinstance(init, tuple) and len(init) == 2 and isinstance(init[0], torch.Tensor)
             and isinstance(init[1], torch.Tensor)):
             twiddle4, twiddle2 = init[0].clone(), init[1].clone()

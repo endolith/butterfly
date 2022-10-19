@@ -58,14 +58,13 @@ class Conjugate(torch.autograd.Function):
     @staticmethod
     def forward(ctx, X):
         assert X.shape[-1] == 2, 'Last dimension must be 2'
-        if X.is_cuda:
-            if use_cupy:
-                # TODO: do we need .contiguous here? I think it doesn't work if the last dimension isn't contiguous
-                return cupy2torch(torch2cupy(X).view('complex64').conj().view('float32'))
-            else:
-                return conjugate_torch(X)
-        else:
+        if not X.is_cuda:
             return torch.from_numpy(np.ascontiguousarray(torch2numpy(X)).view('complex64').conj().view('float32'))
+        if use_cupy:
+            # TODO: do we need .contiguous here? I think it doesn't work if the last dimension isn't contiguous
+            return cupy2torch(torch2cupy(X).view('complex64').conj().view('float32'))
+        else:
+            return conjugate_torch(X)
 
     @staticmethod
     def backward(ctx, grad):
@@ -184,8 +183,7 @@ class ComplexMatmulNp(torch.autograd.Function):
         ctx.save_for_backward(X, Y)
         X_np = np.ascontiguousarray(torch2numpy(X)).view('complex64').squeeze(-1)
         Y_np = np.ascontiguousarray(torch2numpy(Y)).view('complex64').squeeze(-1)
-        prod = torch.from_numpy((X_np @ Y_np)[..., None].view('float32'))
-        return prod
+        return torch.from_numpy((X_np @ Y_np)[..., None].view('float32'))
 
     @staticmethod
     def backward(ctx, grad):

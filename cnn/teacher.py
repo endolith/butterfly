@@ -2,7 +2,10 @@ import os, sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 # Add to $PYTHONPATH in addition to sys.path so that ray workers can see
-os.environ['PYTHONPATH'] = project_root + ":" + os.environ.get('PYTHONPATH', '')
+os.environ['PYTHONPATH'] = f"{project_root}:" + os.environ.get(
+    'PYTHONPATH', ''
+)
+
 
 import io
 import argparse, shutil, time, warnings
@@ -201,7 +204,13 @@ def main():
             transforms.ToTensor(),
             transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
         ])
-        trainset = datasets.CIFAR10(root=project_root+'/data', train=True, download=True, transform=transform_train)
+        trainset = datasets.CIFAR10(
+            root=f'{project_root}/data',
+            train=True,
+            download=True,
+            transform=transform_train,
+        )
+
         np_random_state = np.random.get_state()  # To get exactly the same training and validation sets
         np.random.seed(0)
         indices = np.random.permutation(range(len(trainset)))

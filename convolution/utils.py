@@ -5,9 +5,7 @@ from munch import Munch
 
 
 def remove_postfix(text, postfix):
-    if text.endswith(postfix):
-        return text[:-len(postfix)]
-    return text
+    return text[:-len(postfix)] if text.endswith(postfix) else text
 
 
 # pytorch-lightning returns pytorch 0-dim tensor instead of python scalar

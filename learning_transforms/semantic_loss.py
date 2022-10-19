@@ -52,8 +52,9 @@ def semantic_loss_exactly_one(log_prob):
     # Compute log(1-p) normally for the rest of the probabilities
     log_1mprob = torch.log1p(-torch.exp(log_prob_temp))
     log_1mprob[range(log_prob.shape[0]), argmaxes] = log_1mprob_max
-    loss = -(log_1mprob.sum(dim=-1) + torch.logsumexp(log_prob - log_1mprob, dim=-1))
-    return loss
+    return -(
+        log_1mprob.sum(dim=-1) + torch.logsumexp(log_prob - log_1mprob, dim=-1)
+    )
 
 
 def test_semantic_loss_exactly_one():

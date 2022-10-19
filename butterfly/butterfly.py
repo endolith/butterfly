@@ -80,28 +80,27 @@ class Butterfly(nn.Module):
             twiddle_core_shape = (self.nstack, m, size // 2) if nblocks == 0 else (self.nstack, nblocks * 2 * m, size // 2)
         if param == 'regular':
             if not ortho_init:
-                twiddle_shape = twiddle_core_shape + ((2, 2) if not complex else (2, 2, 2))
+                twiddle_shape = twiddle_core_shape + ((2, 2, 2) if complex else (2, 2))
                 scaling = 1.0 / 2 if complex else 1.0 / math.sqrt(2)
                 self.twiddle = nn.Parameter(torch.randn(twiddle_shape) * scaling)
+            elif complex:
+                # Sampling from the Haar measure on U(2) is a bit subtle.
+                # Using the parameterization here: http://home.lu.lv/~sd20008/papers/essays/Random%20unitary%20[paper].pdf
+                phi = torch.asin(torch.sqrt(torch.rand(twiddle_core_shape)))
+                c, s = torch.cos(phi), torch.sin(phi)
+                alpha, psi, chi = torch.rand((3, ) + twiddle_core_shape) * math.pi * 2
+                A = torch.stack((c * torch.cos(alpha + psi), c * torch.sin(alpha + psi)), dim=-1)
+                B = torch.stack((s * torch.cos(alpha + chi), s * torch.sin(alpha + chi)), dim=-1)
+                C = torch.stack((-s * torch.cos(alpha - chi), -s * torch.sin(alpha - chi)), dim=-1)
+                D = torch.stack((c * torch.cos(alpha - psi), c * torch.sin(alpha - psi)), dim=-1)
+                self.twiddle = nn.Parameter(torch.stack((torch.stack((A, B), dim=-2),
+                                                         torch.stack((C, D), dim=-2)), dim=-3))
             else:
-                if not complex:
-                    theta = torch.rand(twiddle_core_shape) * math.pi * 2
-                    c, s = torch.cos(theta), torch.sin(theta)
-                    det = torch.randint(0, 2, twiddle_core_shape, dtype=c.dtype) * 2 - 1  # Rotation (+1) or reflection (-1)
-                    self.twiddle = nn.Parameter(torch.stack((torch.stack((det * c, -det * s), dim=-1),
-                                                             torch.stack((s, c), dim=-1)), dim=-2))
-                else:
-                    # Sampling from the Haar measure on U(2) is a bit subtle.
-                    # Using the parameterization here: http://home.lu.lv/~sd20008/papers/essays/Random%20unitary%20[paper].pdf
-                    phi = torch.asin(torch.sqrt(torch.rand(twiddle_core_shape)))
-                    c, s = torch.cos(phi), torch.sin(phi)
-                    alpha, psi, chi = torch.rand((3, ) + twiddle_core_shape) * math.pi * 2
-                    A = torch.stack((c * torch.cos(alpha + psi), c * torch.sin(alpha + psi)), dim=-1)
-                    B = torch.stack((s * torch.cos(alpha + chi), s * torch.sin(alpha + chi)), dim=-1)
-                    C = torch.stack((-s * torch.cos(alpha - chi), -s * torch.sin(alpha - chi)), dim=-1)
-                    D = torch.stack((c * torch.cos(alpha - psi), c * torch.sin(alpha - psi)), dim=-1)
-                    self.twiddle = nn.Parameter(torch.stack((torch.stack((A, B), dim=-2),
-                                                             torch.stack((C, D), dim=-2)), dim=-3))
+                theta = torch.rand(twiddle_core_shape) * math.pi * 2
+                c, s = torch.cos(theta), torch.sin(theta)
+                det = torch.randint(0, 2, twiddle_core_shape, dtype=c.dtype) * 2 - 1  # Rotation (+1) or reflection (-1)
+                self.twiddle = nn.Parameter(torch.stack((torch.stack((det * c, -det * s), dim=-1),
+                                                         torch.stack((s, c), dim=-1)), dim=-2))
             if fast:
                 if nblocks == 0:
                     twiddle_fast = twiddle_normal_to_fast_format(self.twiddle)
@@ -179,7 +178,7 @@ class Butterfly(nn.Module):
                 self.twiddle = nn.Parameter(torch.rand(twiddle_core_shape) * 2*math.pi)
         self.twiddle._is_structured = True  # Flag to avoid weight decay
         if bias:
-            bias_shape = (out_size, ) if not complex else (out_size, 2)
+            bias_shape = (out_size, 2) if complex else (out_size, )
             self.bias = nn.Parameter(torch.Tensor(*bias_shape))
         else:
             self.register_parameter('bias', None)
@@ -265,20 +264,44 @@ class Butterfly(nn.Module):
             output = input.view(-1, input.size(-1))
         batch = output.shape[0]
         if self.in_size != self.in_size_extended:  # Zero-pad
-            padding = (0, self.in_size_extended - self.in_size) if not self.complex else (0, 0, 0, self.in_size_extended - self.in_size)
+            padding = (
+                (0, 0, 0, self.in_size_extended - self.in_size)
+                if self.complex
+                else (0, self.in_size_extended - self.in_size)
+            )
+
             output = F.pad(output, padding)
-        output = output.unsqueeze(1).expand((batch, self.nstack, self.in_size_extended) + (() if not self.complex else (2, )))
+        output = output.unsqueeze(1).expand(
+            (batch, self.nstack, self.in_size_extended)
+            + ((2,) if self.complex else ())
+        )
+
         return output
 
     def post_process(self, input, output):
         batch = output.shape[0]
-        output = output.view((batch, self.nstack * self.in_size_extended) + (() if not self.complex else (2, )))
+        output = output.view(
+            (batch, self.nstack * self.in_size_extended)
+            + ((2,) if self.complex else ())
+        )
+
         out_size_extended = 1 << (int(math.ceil(math.log2(self.out_size))))
         if (self.nstack * self.in_size_extended // out_size_extended >= 2):  # Average instead of just take the top rows
-            if not self.complex:
-                output = output.view(batch, self.nstack * self.in_size_extended // out_size_extended, out_size_extended).sum(dim=1)
-            else:
-                output = output.view(batch, self.nstack * self.in_size_extended // out_size_extended, out_size_extended, 2).sum(dim=1)
+            output = (
+                output.view(
+                    batch,
+                    self.nstack * self.in_size_extended // out_size_extended,
+                    out_size_extended,
+                    2,
+                ).sum(dim=1)
+                if self.complex
+                else output.view(
+                    batch,
+                    self.nstack * self.in_size_extended // out_size_extended,
+                    out_size_extended,
+                ).sum(dim=1)
+            )
+
         if self.out_size != out_size_extended:  # Take top rows
             output = output[:, :self.out_size]
         if self.bias is not None:
@@ -289,11 +312,11 @@ class Butterfly(nn.Module):
             return output.view(*input.size()[:-1], self.out_size)
 
     def extra_repr(self):
-        s = 'in_size={}, out_size={}, bias={}, complex={}, tied_weight={}, increasing_stride={}, ortho_init={}, param={}, nblocks={}, expansion={}, diag_init={}'.format(
-            self.in_size, self.out_size, self.bias is not None, self.complex, self.tied_weight, self.increasing_stride, self.ortho_init, self.param, self.nblocks, self.expansion, self.diag_init,
-        )
+        s = f'in_size={self.in_size}, out_size={self.out_size}, bias={self.bias is not None}, complex={self.complex}, tied_weight={self.tied_weight}, increasing_stride={self.increasing_stride}, ortho_init={self.ortho_init}, param={self.param}, nblocks={self.nblocks}, expansion={self.expansion}, diag_init={self.diag_init}'
+
         if self.param == 'odo':
-            s += ', diag_constraint={}'.format('none' if self.diag_constraint is None else self.diag_constraint)
+            s += f", diag_constraint={'none' if self.diag_constraint is None else self.diag_constraint}"
+
         return s
 
     def round_to_perm(self):
@@ -355,36 +378,70 @@ class ButterflyBmm(Butterfly):
         self.matrix_batch = matrix_batch
         if self.bias is not None:
             with torch.no_grad():
-                bias_reshape = self.bias.view((matrix_batch, in_size_extended * nstack) + (() if not self.complex else (2, )))
+                bias_reshape = self.bias.view(
+                    (matrix_batch, in_size_extended * nstack)
+                    + ((2,) if self.complex else ())
+                )
+
                 self.bias = nn.Parameter(bias_reshape[:, :out_size].contiguous())
 
     def pre_process(self, input):
         batch = input.shape[0]
         output = input
         if self.in_size != self.in_size_extended:  # Zero-pad
-            padding = (0, self.in_size_extended - self.in_size) if not self.complex else (0, 0, 0, self.in_size_extended - self.in_size)
+            padding = (
+                (0, 0, 0, self.in_size_extended - self.in_size)
+                if self.complex
+                else (0, self.in_size_extended - self.in_size)
+            )
+
             output = F.pad(output, padding)
-        output = output.unsqueeze(2).expand((batch, self.matrix_batch, self.nstack, self.in_size_extended) + (() if not self.complex else (2, )))
-        output = output.reshape((batch, self.matrix_batch * self.nstack, self.in_size_extended) + (() if not self.complex else (2, )))
+        output = output.unsqueeze(2).expand(
+            (batch, self.matrix_batch, self.nstack, self.in_size_extended)
+            + ((2,) if self.complex else ())
+        )
+
+        output = output.reshape(
+            (batch, self.matrix_batch * self.nstack, self.in_size_extended)
+            + ((2,) if self.complex else ())
+        )
+
         return output
 
     def post_process(self, input, output):
         batch = output.shape[0]
-        output = output.view((batch, self.matrix_batch, self.nstack * self.in_size_extended) + (() if not self.complex else (2, )))
+        output = output.view(
+            (batch, self.matrix_batch, self.nstack * self.in_size_extended)
+            + ((2,) if self.complex else ())
+        )
+
         out_size_extended = 1 << (int(math.ceil(math.log2(self.out_size))))
         if (self.nstack * self.in_size_extended // out_size_extended >= 2):  # Sum instead of just take the top rows
-            if not self.complex:
-                output = output.view(batch, self.matrix_batch, self.nstack * self.in_size_extended // out_size_extended, out_size_extended).sum(dim=2)
-            else:
-                output = output.view(batch, self.matrix_batch, self.nstack * self.in_size_extended // out_size_extended, out_size_extended, 2).sum(dim=2)
+            output = (
+                output.view(
+                    batch,
+                    self.matrix_batch,
+                    self.nstack * self.in_size_extended // out_size_extended,
+                    out_size_extended,
+                    2,
+                ).sum(dim=2)
+                if self.complex
+                else output.view(
+                    batch,
+                    self.matrix_batch,
+                    self.nstack * self.in_size_extended // out_size_extended,
+                    out_size_extended,
+                ).sum(dim=2)
+            )
+
         if self.out_size != out_size_extended:  # Take top rows
             output = output[:, :, :self.out_size]
         return output if self.bias is None else output + self.bias
 
     def extra_repr(self):
-        s = 'in_size={}, out_size={}, matrix_batch={}, bias={}, complex={}, tied_weight={}, increasing_stride={}, ortho_init={}, param={}, nblocks={}, expansion={}, diag_init={}'.format(
-            self.in_size, self.out_size, self.matrix_batch, self.bias is not None, self.complex, self.tied_weight, self.increasing_stride, self.ortho_init, self.param, self.nblocks, self.expansion, self.diag_init
-        )
+        s = f'in_size={self.in_size}, out_size={self.out_size}, matrix_batch={self.matrix_batch}, bias={self.bias is not None}, complex={self.complex}, tied_weight={self.tied_weight}, increasing_stride={self.increasing_stride}, ortho_init={self.ortho_init}, param={self.param}, nblocks={self.nblocks}, expansion={self.expansion}, diag_init={self.diag_init}'
+
         if self.param == 'odo':
-            s += ', diag_constraint={}'.format('none' if self.diag_constraint is None else self.diag_constraint)
+            s += f", diag_constraint={'none' if self.diag_constraint is None else self.diag_constraint}"
+
         return s

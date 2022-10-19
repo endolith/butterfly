@@ -2,7 +2,10 @@ import os, sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 # Add to $PYTHONPATH in addition to sys.path so that ray workers can see
-os.environ['PYTHONPATH'] = project_root + ":" + os.environ.get('PYTHONPATH', '')
+os.environ['PYTHONPATH'] = f"{project_root}:" + os.environ.get(
+    'PYTHONPATH', ''
+)
+
 
 import math
 from pathlib import Path
@@ -193,13 +196,13 @@ def default_config():
     optimizer = 'SGD'  # Which optimizer to use, either Adam or SGD
     ntrials = 20  # Number of trials for hyperparameter tuning
     nmaxepochs = 100  # Maximum number of epochs
-    result_dir = project_root + '/cnn/distill_cov_results'  # Directory to store results
+    result_dir = f'{project_root}/cnn/distill_cov_results'
     cuda = torch.cuda.is_available()  # Whether to use GPU
     smoke_test = False  # Finish quickly for testing
     dataset = 'imagenet'
     teacher_model = 'mobilenetv1_0.5'
-    teacher_model_path = project_root + '/cnn/' + teacher_model + '/checkpoint.pth.tar'
-    input_cov_path = project_root + '/cnn/' + teacher_model + '/input_cov.pt'
+    teacher_model_path = f'{project_root}/cnn/{teacher_model}/checkpoint.pth.tar'
+    input_cov_path = f'{project_root}/cnn/{teacher_model}/input_cov.pt'
     min_lr = 1e-4
     max_lr = 1e-2
     grace_period = 10
@@ -231,7 +234,7 @@ def distillation_experiment(model_args, objective, optimizer, ntrials, result_di
         'n_epochs_per_validation': nepochsvalid,
         }
     model_args_print = '_'.join([f'{key}_{value}' for key,value in model_args.items()])
-    experiment = RayExperiment(
+    return RayExperiment(
         name=f'{teacher_model}_{objective}_{model_args_print}_{optimizer}',
         run=TrainableDistillCovModel,
         local_dir=result_dir,
@@ -243,7 +246,6 @@ def distillation_experiment(model_args, objective, optimizer, ntrials, result_di
         stop={"training_iteration": 1 if smoke_test else 9999},
         config=config,
     )
-    return experiment
 
 
 @ex.automain

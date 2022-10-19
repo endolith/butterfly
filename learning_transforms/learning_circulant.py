@@ -224,7 +224,7 @@ def circulant_experiment_real(fixed_order, softmax_fn, size, ntrials, nsteps, re
      }
     if (not fixed_order) and softmax_fn == 'softmax':
         config['semantic_loss_weight'] = sample_from(lambda spec: math.exp(random.uniform(math.log(5e-3), math.log(5e-1))))
-    experiment = RayExperiment(
+    return RayExperiment(
         name=f'Circulant_factorization_real_{fixed_order}_{softmax_fn}_{size}',
         run=TrainableCirculantReal,
         local_dir=result_dir,
@@ -233,11 +233,10 @@ def circulant_experiment_real(fixed_order, softmax_fn, size, ntrials, nsteps, re
         resources_per_trial={'cpu': nthreads, 'gpu': 0},
         stop={
             'training_iteration': 1 if smoke_test else 99999,
-            'negative_loss': -1e-8
+            'negative_loss': -1e-8,
         },
         config=config,
     )
-    return experiment
 
 @ex.capture
 def circulant_experiment_complex(fixed_order, softmax_fn, size, ntrials, nsteps, result_dir, nthreads, smoke_test):
@@ -253,7 +252,7 @@ def circulant_experiment_complex(fixed_order, softmax_fn, size, ntrials, nsteps,
      }
     if (not fixed_order) and softmax_fn == 'softmax':
         config['semantic_loss_weight'] = sample_from(lambda spec: math.exp(random.uniform(math.log(5e-3), math.log(5e-1))))
-    experiment = RayExperiment(
+    return RayExperiment(
         name=f'Circulant_factorization_complex_{fixed_order}_{softmax_fn}_{size}',
         run=TrainableCirculantComplex,
         local_dir=result_dir,
@@ -262,11 +261,10 @@ def circulant_experiment_complex(fixed_order, softmax_fn, size, ntrials, nsteps,
         resources_per_trial={'cpu': nthreads, 'gpu': 0},
         stop={
             'training_iteration': 1 if smoke_test else 99999,
-            'negative_loss': -1e-8
+            'negative_loss': -1e-8,
         },
         config=config,
     )
-    return experiment
 
 
 @ex.automain
@@ -300,5 +298,5 @@ def run(result_dir, nmaxepochs, nthreads):
     with checkpoint_path.open('wb') as f:
         pickle.dump(trials, f)
 
-    ex.add_artifact(str(checkpoint_path))
+    ex.add_artifact(checkpoint_path)
     return min(losses + polished_losses)

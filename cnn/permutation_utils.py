@@ -17,8 +17,7 @@ def listperm2matperm(listperm):
     matperm[t, i, listperm[t,i]] = 1
     """
     n = listperm.size(-1)
-    P = torch.eye(n, dtype=torch.long, device=listperm.device)[listperm]
-    return P
+    return torch.eye(n, dtype=torch.long, device=listperm.device)[listperm]
 
 def matperm2listperm(matperm):
     """Converts permutation matrix to its enumeration (list) form.
@@ -76,13 +75,14 @@ def dist(perm1, perm2, fn='nll'):
     loss = 0.0
     # if not isinstance(perm1, tuple):
     #     perm1, perm2 = (perm1,), (perm2,)
-    if fn == 'nll':
-        loss_fn = nll
-    elif fn == 'mse':
+    if fn == 'mse':
         loss_fn = mse
+    elif fn == 'nll':
+        loss_fn = nll
     elif fn == 'was':
         loss_fn = transport
-    else: assert False, f"perm.dist: fn {fn} not supported."
+    else:
+        assert False, f"perm.dist: fn {fn} not supported."
 
     loss1, loss2 = 0.0, 0.0
     for p1, p2 in zip(perm1, perm2):
@@ -102,10 +102,7 @@ def dist(perm1, perm2, fn='nll'):
         else:
             loss = loss + loss_fn(p1, p2)
     # print(loss, loss.type())
-    if fn == 'was':
-        return loss1, loss2
-    else:
-        return loss
+    return (loss1, loss2) if fn == 'was' else loss
 
 def entropy(p, reduction='mean'):
     """
@@ -287,5 +284,4 @@ def add_gumbel_noise(log_alpha, sample_shape=()):
     # noise = sample_gumbel(sample_shape + log_alpha.shape)
     # log_alpha_noise = log_alpha + noise.to(log_alpha.device)
     noise = sample_gumbel(sample_shape + log_alpha.shape, device=log_alpha.device)
-    log_alpha_noise = log_alpha + noise
-    return log_alpha_noise
+    return log_alpha + noise

@@ -38,8 +38,9 @@ class HstackDiag(nn.Module):
         Return:
             output: (b, size, 2, 2, d1 + self.deg - 1)
         """
-        output = polymatmul(input_[:, :self.size], self.diag1) + polymatmul(input_[:, self.size:], self.diag2)
-        return output
+        return polymatmul(input_[:, : self.size], self.diag1) + polymatmul(
+            input_[:, self.size :], self.diag2
+        )
 
 
 class HstackDiagProduct(nn.Module):
@@ -64,8 +65,12 @@ class HstackDiagProduct(nn.Module):
         output = input_
         for factor in self.factors[::-1]:
             output = factor(output)
-        result = polymatmul(output[:, :, [1], :, :-1], self.P_init).squeeze(1).squeeze(1).squeeze(1)
-        return result
+        return (
+            polymatmul(output[:, :, [1], :, :-1], self.P_init)
+            .squeeze(1)
+            .squeeze(1)
+            .squeeze(1)
+        )
 
 
 def test_hstackdiag_product():

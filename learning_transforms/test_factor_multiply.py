@@ -11,10 +11,15 @@ from factor_multiply import butterfly_multiply_intermediate, butterfly_multiply_
 
 def twiddle_list_concat(B: Block2x2DiagProduct):
     # Assume ordering from largest size to smallest size
-    if not B.complex:
-        return torch.cat([factor.ABCD.permute(2, 0, 1) for factor in B.factors[::-1]])
-    else:
-        return torch.cat([factor.ABCD.permute(2, 0, 1, 3) for factor in B.factors[::-1]])
+    return (
+        torch.cat(
+            [factor.ABCD.permute(2, 0, 1, 3) for factor in B.factors[::-1]]
+        )
+        if B.complex
+        else torch.cat(
+            [factor.ABCD.permute(2, 0, 1) for factor in B.factors[::-1]]
+        )
+    )
 
 
 class ButterflyFactorTest(unittest.TestCase):
@@ -85,8 +90,13 @@ class ButterflyFactorTest(unittest.TestCase):
         twiddle = twiddle_list_concat(B).unsqueeze(0)
         output_intermediate = butterfly_multiply_intermediate(twiddle, input_)
         output = [input_]
-        for factor in B.factors[::-1]:
-            output.append(butterfly_factor_mult(factor.ABCD, output[-1].view(-1, 2, factor.size // 2)).view(output[-1].shape))
+        output.extend(
+            butterfly_factor_mult(
+                factor.ABCD, output[-1].view(-1, 2, factor.size // 2)
+            ).view(output[-1].shape)
+            for factor in B.factors[::-1]
+        )
+
         output = torch.stack(output)
         self.assertTrue(torch.allclose(output_intermediate.squeeze(2), output, rtol=self.rtol, atol=self.atol), (output_intermediate.squeeze(2) - output).abs().max().item())
         grad = torch.randn_like(output[-1])
@@ -105,8 +115,13 @@ class ButterflyFactorTest(unittest.TestCase):
         twiddle = twiddle_list_concat(B).unsqueeze(0)
         output_intermediate = butterfly_multiply_intermediate(twiddle, input_)
         output = [input_]
-        for factor in B.factors[::-1]:
-            output.append(butterfly_factor_mult(factor.ABCD, output[-1].view(-1, 2, factor.size // 2, 2)).view(output[-1].shape))
+        output.extend(
+            butterfly_factor_mult(
+                factor.ABCD, output[-1].view(-1, 2, factor.size // 2, 2)
+            ).view(output[-1].shape)
+            for factor in B.factors[::-1]
+        )
+
         output = torch.stack(output)
         self.assertTrue(torch.allclose(output_intermediate.squeeze(2), output, rtol=self.rtol, atol=self.atol), (output_intermediate.squeeze(2) - output).abs().max().item())
         grad = torch.randn_like(output[-1])
@@ -126,8 +141,13 @@ class ButterflyFactorTest(unittest.TestCase):
         twiddle = twiddle_list_concat(B).unsqueeze(0)
         output_intermediate = butterfly_multiply_intermediate(twiddle, input_)
         output = [input_]
-        for factor in B.factors[::-1]:
-            output.append(butterfly_factor_mult(factor.ABCD, output[-1].view(-1, 2, factor.size // 2)).view(output[-1].shape))
+        output.extend(
+            butterfly_factor_mult(
+                factor.ABCD, output[-1].view(-1, 2, factor.size // 2)
+            ).view(output[-1].shape)
+            for factor in B.factors[::-1]
+        )
+
         output = torch.stack(output)
         self.assertTrue(torch.allclose(output_intermediate.squeeze(2), output, rtol=self.rtol, atol=self.atol), (output_intermediate.squeeze(2) - output).abs().max().item())
         grad = torch.randn_like(output[-1])
@@ -147,8 +167,13 @@ class ButterflyFactorTest(unittest.TestCase):
         twiddle = twiddle_list_concat(B).unsqueeze(0)
         output_intermediate = butterfly_multiply_intermediate(twiddle, input_)
         output = [input_]
-        for factor in B.factors[::-1]:
-            output.append(butterfly_factor_mult(factor.ABCD, output[-1].view(-1, 2, factor.size // 2, 2)).view(output[-1].shape))
+        output.extend(
+            butterfly_factor_mult(
+                factor.ABCD, output[-1].view(-1, 2, factor.size // 2, 2)
+            ).view(output[-1].shape)
+            for factor in B.factors[::-1]
+        )
+
         output = torch.stack(output)
         self.assertTrue(torch.allclose(output_intermediate.squeeze(2), output, rtol=self.rtol, atol=self.atol), (output_intermediate.squeeze(2) - output).abs().max().item())
         grad = torch.randn_like(output[-1])

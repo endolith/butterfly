@@ -177,10 +177,15 @@ def Block2x2DiagProduct_to_ABCDs(model):
     """
     assert isinstance(model, Block2x2DiagProduct)
     ABCDs = []
-    if not model.complex:
-        ABCDs = [factor.ABCD.detach().numpy() for factor in model.factors]
-    else:
-        ABCDs = [factor.ABCD.detach().numpy().view('complex64').squeeze(-1) for factor in model.factors]
+    ABCDs = (
+        [
+            factor.ABCD.detach().numpy().view('complex64').squeeze(-1)
+            for factor in model.factors
+        ]
+        if model.complex
+        else [factor.ABCD.detach().numpy() for factor in model.factors]
+    )
+
     return ABCDs
 
 # TODO: Turn these into tests

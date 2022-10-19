@@ -101,11 +101,15 @@ cudnn.benchmark = True
 best_prec1 = 0
 args = parser.parse_args()
 
-print("opt_level = {}".format(args.opt_level))
-print("keep_batchnorm_fp32 = {}".format(args.keep_batchnorm_fp32), type(args.keep_batchnorm_fp32))
-print("loss_scale = {}".format(args.loss_scale), type(args.loss_scale))
+print(f"opt_level = {args.opt_level}")
+print(
+    f"keep_batchnorm_fp32 = {args.keep_batchnorm_fp32}",
+    type(args.keep_batchnorm_fp32),
+)
 
-print("\nCUDNN VERSION: {}\n".format(torch.backends.cudnn.version()))
+print(f"loss_scale = {args.loss_scale}", type(args.loss_scale))
+
+print(f"\nCUDNN VERSION: {torch.backends.cudnn.version()}\n")
 
 if args.deterministic:
     cudnn.benchmark = False
@@ -215,14 +219,10 @@ def main():
                 print("=> no checkpoint found at '{}'".format(args.resume))
         resume()
 
-    # Data loading code
-    if(args.arch == "inception_v3"):
+    if (args.arch == "inception_v3"):
         raise RuntimeError("Currently, inception_v3 is not supported by this example.")
-        # crop_size = 299
-        # val_size = 320 # I chose this value arbitrarily, we can adjust.
-    else:
-        crop_size = 224
-        val_size = 256
+    crop_size = 224
+    val_size = 256
 
     if args.data_backend == 'pytorch':
         get_train_loader = get_pytorch_train_loader
@@ -274,12 +274,12 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
     data_iter = enumerate(train_loader)
     for i, (input, target) in data_iter:
-        if args.prof >= 0 and i == args.prof:
-            print("Profiling begun at iteration {}".format(i))
-            torch.cuda.cudart().cudaProfilerStart()
+        if args.prof >= 0:
+            if i == args.prof:
+                print(f"Profiling begun at iteration {i}")
+                torch.cuda.cudart().cudaProfilerStart()
 
-        if args.prof >= 0: torch.cuda.nvtx.range_push("Body of iteration {}".format(i))
-
+            torch.cuda.nvtx.range_push(f"Body of iteration {i}")
         adjust_learning_rate(optimizer, epoch, i, train_loader._len)
 
         # compute output
@@ -347,7 +347,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
         if args.prof >= 0: torch.cuda.nvtx.range_pop()
 
         if args.prof >= 0 and i == args.prof + 10:
-            print("Profiling ended at iteration {}".format(i))
+            print(f"Profiling ended at iteration {i}")
             torch.cuda.cudart().cudaProfilerStop()
             quit()
 

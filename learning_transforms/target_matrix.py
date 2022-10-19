@@ -3,6 +3,7 @@ Complex complex must be converted to real matrices with 2 as the last dimension
 (for Pytorch's compatibility).
 """
 
+
 import math
 
 import numpy as np
@@ -18,7 +19,10 @@ import os, sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 # Add to $PYTHONPATH in addition to sys.path so that ray workers can see
-os.environ['PYTHONPATH'] = project_root + ":" + os.environ.get('PYTHONPATH', '')
+os.environ['PYTHONPATH'] = f"{project_root}:" + os.environ.get(
+    'PYTHONPATH', ''
+)
+
 
 from butterfly import Butterfly
 
@@ -82,8 +86,7 @@ def toeplitz_like(G, H):
     A1_ = np.diag(np.ones(size-1), -1)
     A1_[0,n-1] = -1
     rank1s = [krylov_construct(A1, G[:,i], n) @ krylov_construct(A1_, H[:i], n).T for i in range(r)]
-    M = sum(ranks1s)
-    return M
+    return sum(ranks1s)
 
 
 def named_target_matrix(name, size):
@@ -186,17 +189,12 @@ def named_target_matrix(name, size):
         # P = np.arange(n)
         P = np.random.permutation(n)
         H = hadamard(n)
-        # SHGPHB
-        # print(H)
-        # print((H*B)[P,:])
-        # print((H @ (G[:,np.newaxis] * (H * B)[P,:])))
-        F = S[:,np.newaxis] * (H @ (G[:,np.newaxis] * (H * B)[P,:])) / n
-        return F
-        # x = np.random.randn(batch_size,n)
-        # HB = hadamard_transform(B)
-        # PHBx = HBx[:, P]
-        # HGPHBx = hadamard_transform(G*PHBx)
-        # return S*HGPHBx
+        return S[:,np.newaxis] * (H @ (G[:,np.newaxis] * (H * B)[P,:])) / n
+            # x = np.random.randn(batch_size,n)
+            # HB = hadamard_transform(B)
+            # PHBx = HBx[:, P]
+            # HGPHBx = hadamard_transform(G*PHBx)
+            # return S*HGPHBx
     elif name == 'butterfly':
         # n (log n+1) params in the hierarchy
         b = Butterfly(in_size=size, out_size=size, bias=False, tied_weight=False, param='odo', nblocks=0)

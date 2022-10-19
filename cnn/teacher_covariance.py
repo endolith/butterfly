@@ -118,10 +118,14 @@ def get_teacher_intermediates(teacher_model, train_loader, layers_to_replace):
         if args.max_batches is not None and batch_idx == args.max_batches:
             break
     logging.info("Computed teacher intermediates. ")
-    saved_mean = {layer_name + '.mean': module_dict[layer_name]._mean for layer_name in layers_to_replace}
+    saved_mean = {
+        f'{layer_name}.mean': module_dict[layer_name]._mean
+        for layer_name in layers_to_replace
+    }
+
     saved_cov = {layer_name: module_dict[layer_name]._cov for layer_name in layers_to_replace}
     with open(f'{args.output_dir}/input_cov.pt', 'wb') as f:
-        torch.save({**saved_mean, **saved_cov}, f)
+        torch.save(saved_mean | saved_cov, f)
 
 def main():
     # resnet models are different for imagenet

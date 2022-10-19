@@ -244,14 +244,32 @@ class ResNet(nn.Module):
                     bn(planes * block.expansion),
                 )
 
-        layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample,
-            is_structured=is_structured, structure_type=structure_type,
-            nblocks=nblocks, param=param))
+        layers = [
+            block(
+                self.inplanes,
+                planes,
+                stride,
+                downsample,
+                is_structured=is_structured,
+                structure_type=structure_type,
+                nblocks=nblocks,
+                param=param,
+            )
+        ]
+
         self.inplanes = planes * block.expansion
-        for i in range(1, blocks): layers.append(block(self.inplanes, planes,
-            is_structured=is_structured, structure_type=structure_type,
-            nblocks=nblocks, param=param))
+        layers.extend(
+            block(
+                self.inplanes,
+                planes,
+                is_structured=is_structured,
+                structure_type=structure_type,
+                nblocks=nblocks,
+                param=param,
+            )
+            for _ in range(1, blocks)
+        )
+
         return nn.Sequential(*layers)
 
     def forward(self, x): return self.features(x)
@@ -263,6 +281,11 @@ class ResNet(nn.Module):
 #    return model
 
 def resnet18(num_structured_layers=0, structure_type='B', nblocks=1, param='regular'):
-    model = ResNet(BasicBlock, [2, 2, 2, 2], num_structured_layers=num_structured_layers,
-            structure_type=structure_type, nblocks=nblocks, param=param)
-    return model
+    return ResNet(
+        BasicBlock,
+        [2, 2, 2, 2],
+        num_structured_layers=num_structured_layers,
+        structure_type=structure_type,
+        nblocks=nblocks,
+        param=param,
+    )

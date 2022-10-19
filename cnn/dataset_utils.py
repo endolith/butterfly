@@ -26,9 +26,27 @@ def get_dataset(config_dataset):
             normalize,
         ])
 
-        trainset = torchvision.datasets.CIFAR10(root=project_root+'/data', train=True, download=True, transform=transform_train)
-        validset = torchvision.datasets.CIFAR10(root=project_root+'/data', train=True, download=False, transform=transform_test)
-        testset = torchvision.datasets.CIFAR10(root=project_root+'/data', train=False, download=True, transform=transform_test)
+        trainset = torchvision.datasets.CIFAR10(
+            root=f'{project_root}/data',
+            train=True,
+            download=True,
+            transform=transform_train,
+        )
+
+        validset = torchvision.datasets.CIFAR10(
+            root=f'{project_root}/data',
+            train=True,
+            download=False,
+            transform=transform_test,
+        )
+
+        testset = torchvision.datasets.CIFAR10(
+            root=f'{project_root}/data',
+            train=False,
+            download=True,
+            transform=transform_test,
+        )
+
         np_random_state = np.random.get_state()  # To get exactly the same training and validation sets
         np.random.seed(0)
         indices = np.random.permutation(range(len(trainset)))
@@ -56,7 +74,7 @@ def get_dataset(config_dataset):
             'val': transforms.Compose([transforms.ToTensor(), normalize,]),
             'test': transforms.Compose([transforms.ToTensor(), normalize,])
         }
-        data_dir = project_root + '/data/tiny-imagenet-200'
+        data_dir = f'{project_root}/data/tiny-imagenet-200'
         datasets = {x: torchvision.datasets.ImageFolder(os.path.join(data_dir, x), data_transforms[x])
                     for x in ['train', 'val','test']}
         num_workers = {'train': 8, 'val': 4, 'test': 4}

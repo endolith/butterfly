@@ -50,7 +50,17 @@ def permutation_mult_torch(prob, input, increasing_stride=False, return_intermed
             # output = output - prob[log_stride - 1, 1:].unsqueeze(-1) * (output - output.flip(-1))
             output = torch.lerp(output, output.flip(-1), prob[log_stride - 1, 1:].unsqueeze(-1))
             intermediates.append(output)
-        return output.view(batch_size, n) if not return_intermediates else torch.stack([intermediate.view(batch_size, n) for intermediate in intermediates])
+        return (
+            torch.stack(
+                [
+                    intermediate.view(batch_size, n)
+                    for intermediate in intermediates
+                ]
+            )
+            if return_intermediates
+            else output.view(batch_size, n)
+        )
+
     else:  # complex
         for log_stride in range(1, nsteps + 1) if increasing_stride else range(1, nsteps + 1)[::-1]:
             stride = 1 << log_stride
@@ -61,7 +71,16 @@ def permutation_mult_torch(prob, input, increasing_stride=False, return_intermed
             # output = (((1 - prob[log_stride - 1, 1:]).unsqueeze(-1).unsqueeze(-1) * output + prob[log_stride - 1, 1:].unsqueeze(-1).unsqueeze(-1) * output.flip(-2)))
             output = torch.lerp(output, output.flip(-2), prob[log_stride - 1, 1:].unsqueeze(-1).unsqueeze(-1))
             intermediates.append(output)
-        return output.view(batch_size, n, 2) if not return_intermediates else torch.stack([intermediate.view(batch_size, n, 2) for intermediate in intermediates])
+        return (
+            torch.stack(
+                [
+                    intermediate.view(batch_size, n, 2)
+                    for intermediate in intermediates
+                ]
+            )
+            if return_intermediates
+            else output.view(batch_size, n, 2)
+        )
 
 
 class PermutationFactorEvenOddMult(torch.autograd.Function):
@@ -155,7 +174,17 @@ def permutation_mult_factors(prob, input, increasing_stride=False, return_interm
             output = permutation_factor_even_odd_mult(prob[log_stride - 1, :1], output)
             output = permutation_factor_reverse_mult(prob[log_stride - 1, 1:], output)
             intermediates.append(output)
-        return output.view(batch_size, n) if not return_intermediates else torch.stack([intermediate.view(batch_size, n) for intermediate in intermediates])
+        return (
+            torch.stack(
+                [
+                    intermediate.view(batch_size, n)
+                    for intermediate in intermediates
+                ]
+            )
+            if return_intermediates
+            else output.view(batch_size, n)
+        )
+
     else:  # complex
         for log_stride in range(1, nsteps + 1) if increasing_stride else range(1, nsteps + 1)[::-1]:
             stride = 1 << log_stride
@@ -163,7 +192,16 @@ def permutation_mult_factors(prob, input, increasing_stride=False, return_interm
             output = permutation_factor_even_odd_mult(prob[log_stride - 1, :1], output)
             output = permutation_factor_reverse_mult(prob[log_stride - 1, 1:], output)
             intermediates.append(output)
-        return output.view(batch_size, n, 2) if not return_intermediates else torch.stack([intermediate.view(batch_size, n, 2) for intermediate in intermediates])
+        return (
+            torch.stack(
+                [
+                    intermediate.view(batch_size, n, 2)
+                    for intermediate in intermediates
+                ]
+            )
+            if return_intermediates
+            else output.view(batch_size, n, 2)
+        )
 
 
 permutation_mult = permutation_mult_factors if use_extension else permutation_mult_torch

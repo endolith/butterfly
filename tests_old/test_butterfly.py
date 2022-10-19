@@ -18,7 +18,7 @@ class ButterflyTest(unittest.TestCase):
 
     def test_butterfly(self):
         batch_size = 10
-        for device in ['cpu'] + ([] if not torch.cuda.is_available() else ['cuda']):
+        for device in ['cpu'] + (['cuda'] if torch.cuda.is_available() else []):
             for in_size, out_size in [(7, 15), (15, 7)]:
                 for complex in [False, True]:
                     for tied_weight in [True, False]:
@@ -31,14 +31,48 @@ class ButterflyTest(unittest.TestCase):
                                                 continue
                                             if nblocks > 0 and complex:
                                                 continue
-                                            if not (nblocks > 0 and tied_weight and param in ['odo']):  # Special case
-                                                if nblocks > 0 and (tied_weight or param not in ['regular', 'ortho', 'odo', 'obdobt']):
-                                                    continue
+                                            if (
+                                                (
+                                                    nblocks <= 0
+                                                    or not tied_weight
+                                                    or param not in ['odo']
+                                                )
+                                                and nblocks > 0
+                                                and (
+                                                    tied_weight
+                                                    or param
+                                                    not in [
+                                                        'regular',
+                                                        'ortho',
+                                                        'odo',
+                                                        'obdobt',
+                                                    ]
+                                                )
+                                            ):
+                                                continue
                                             b = Butterfly(in_size, out_size, True, complex, tied_weight, increasing_stride, ortho_init, param, nblocks=nblocks, expansion=expansion).to(device)
-                                            input = torch.randn((batch_size, in_size) + (() if not complex else (2,)), device=device)
+                                            input = torch.randn(
+                                                (batch_size, in_size)
+                                                + ((2,) if complex else ()),
+                                                device=device,
+                                            )
+
                                             output = b(input)
-                                            self.assertTrue(output.shape == (batch_size, out_size) + (() if not complex else (2,)),
-                                                            (output.shape, device, (in_size, out_size), complex, tied_weight, ortho_init, nblocks))
+                                            self.assertTrue(
+                                                output.shape
+                                                == (batch_size, out_size)
+                                                + ((2,) if complex else ()),
+                                                (
+                                                    output.shape,
+                                                    device,
+                                                    (in_size, out_size),
+                                                    complex,
+                                                    tied_weight,
+                                                    ortho_init,
+                                                    nblocks,
+                                                ),
+                                            )
+
                                             if ortho_init and param == 'regular':
                                                 twiddle_np = b.twiddle.detach().to('cpu').numpy()
                                                 if complex:
@@ -69,7 +103,7 @@ class ButterflyTest(unittest.TestCase):
     def test_butterfly_bmm(self):
         batch_size = 10
         matrix_batch = 3
-        for device in ['cpu'] + ([] if not torch.cuda.is_available() else ['cuda']):
+        for device in ['cpu'] + (['cuda'] if torch.cuda.is_available() else []):
             for in_size, out_size in [(7, 15), (15, 7)]:
                 for complex in [False, True]:
                     for tied_weight in [True, False]:
@@ -82,14 +116,51 @@ class ButterflyTest(unittest.TestCase):
                                                 continue
                                             if nblocks > 0 and complex:
                                                 continue
-                                            if not (nblocks > 0 and tied_weight and param in ['odo']):  # Special case
-                                                if nblocks > 0 and (tied_weight or param not in ['regular', 'ortho', 'odo', 'obdobt']):
-                                                    continue
+                                            if (
+                                                (
+                                                    nblocks <= 0
+                                                    or not tied_weight
+                                                    or param not in ['odo']
+                                                )
+                                                and nblocks > 0
+                                                and (
+                                                    tied_weight
+                                                    or param
+                                                    not in [
+                                                        'regular',
+                                                        'ortho',
+                                                        'odo',
+                                                        'obdobt',
+                                                    ]
+                                                )
+                                            ):
+                                                continue
                                             b_bmm = ButterflyBmm(in_size, out_size, matrix_batch, True, complex, tied_weight, increasing_stride, ortho_init, param, expansion=expansion).to(device)
-                                            input = torch.randn((batch_size, matrix_batch, in_size) + (() if not complex else (2,)), device=device)
+                                            input = torch.randn(
+                                                (batch_size, matrix_batch, in_size)
+                                                + ((2,) if complex else ()),
+                                                device=device,
+                                            )
+
                                             output = b_bmm(input)
-                                            self.assertTrue(output.shape == (batch_size, matrix_batch, out_size) + (() if not complex else (2,)),
-                                                            (output.shape, device, (in_size, out_size), complex, tied_weight, ortho_init))
+                                            self.assertTrue(
+                                                output.shape
+                                                == (
+                                                    batch_size,
+                                                    matrix_batch,
+                                                    out_size,
+                                                )
+                                                + ((2,) if complex else ()),
+                                                (
+                                                    output.shape,
+                                                    device,
+                                                    (in_size, out_size),
+                                                    complex,
+                                                    tied_weight,
+                                                    ortho_init,
+                                                ),
+                                            )
+
                                             # Check that the result is the same as looping over butterflies
                                             if param == 'regular':
                                                 output_loop = []

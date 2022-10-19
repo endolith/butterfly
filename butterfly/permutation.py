@@ -51,9 +51,7 @@ class Permutation(nn.Module):
         return permutation_mult(prob, input, increasing_stride=self.increasing_stride).squeeze(0).round().long()
 
     def extra_repr(self):
-        return 'size={}, share_logit={}, increasing_stride={}'.format(
-            self.size, self.share_logit, self.increasing_stride
-        )
+        return f'size={self.size}, share_logit={self.share_logit}, increasing_stride={self.increasing_stride}'
 
 
 class FixedPermutation(nn.Module):
@@ -110,4 +108,4 @@ class PermutationFactor(nn.Module):
         return permutation_mult_single(prob, input).squeeze(0).round().long()
 
     def extra_repr(self):
-        return 'size={}'.format(self.size)
+        return f'size={self.size}'

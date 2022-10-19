@@ -1,4 +1,5 @@
 '''LeNet in PyTorch.'''
+
 import sys, os, subprocess
 import torch
 import torch.nn as nn
@@ -6,7 +7,10 @@ import torch.nn.functional as F
 
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
-os.environ['PYTHONPATH'] = project_root + ":" + os.environ.get('PYTHONPATH', '')
+os.environ['PYTHONPATH'] = f"{project_root}:" + os.environ.get(
+    'PYTHONPATH', ''
+)
+
 from butterfly import Butterfly
 from butterfly.butterfly_multiply import butterfly_mult_untied
 # import baselines.toeplitz as toeplitz

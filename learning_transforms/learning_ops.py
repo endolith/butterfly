@@ -111,7 +111,7 @@ def ops_experiment(size, ntrials, nsteps, result_dir, nthreads, smoke_test):
         'seed': sample_from(lambda spec: random.randint(0, 1 << 16)),
         'n_steps_per_epoch': nsteps,
      }
-    experiment = RayExperiment(
+    return RayExperiment(
         name=f'Ops_factorization_{size}',
         run=TrainableOps,
         local_dir=result_dir,
@@ -120,11 +120,10 @@ def ops_experiment(size, ntrials, nsteps, result_dir, nthreads, smoke_test):
         resources_per_trial={'cpu': nthreads, 'gpu': 0},
         stop={
             'training_iteration': 1 if smoke_test else 99999,
-            'negative_loss': -1e-8
+            'negative_loss': -1e-8,
         },
         config=config,
     )
-    return experiment
 
 
 @ex.automain
@@ -157,7 +156,7 @@ def run(result_dir, nmaxepochs, nthreads):
     with checkpoint_path.open('wb') as f:
         pickle.dump(trials, f)
 
-    ex.add_artifact(str(checkpoint_path))
+    ex.add_artifact(checkpoint_path)
     return min(losses + polished_losses)
 
 # TODO: there might be a memory leak, trying to find it here

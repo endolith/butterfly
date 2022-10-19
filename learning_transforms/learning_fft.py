@@ -638,11 +638,16 @@ def polished_loss_fft_learn_perm(trainable):
         loss = nn.functional.mse_loss(polished_model.matrix()[:, trainable.perm], trainable.target_matrix)
         loss.backward()
         return loss
+
     for i in range(N_LBFGS_STEPS_VALIDATION):
         optimizer.step(closure)
     loss = nn.functional.mse_loss(polished_model.matrix()[:, trainable.perm], trainable.target_matrix)
     # return loss.item() if not torch.isnan(loss) else preopt_loss.item() if not torch.isnan(preopt_loss) else float('inf')
-    return loss.item() if not torch.isnan(loss) else preopt_loss.item() if not torch.isnan(preopt_loss) else 9999.0
+    return (
+        (9999.0 if torch.isnan(preopt_loss) else preopt_loss.item())
+        if torch.isnan(loss)
+        else loss.item()
+    )
 
 
 ex = Experiment('Fft_factorization')
@@ -692,7 +697,7 @@ def fft_experiment(fixed_order, softmax_fn, size, ntrials, nsteps, result_dir, n
      }
     if (not fixed_order) and softmax_fn == 'softmax':
         config['semantic_loss_weight'] = sample_from(lambda spec: math.exp(random.uniform(math.log(5e-3), math.log(5e-1))))
-    experiment = RayExperiment(
+    return RayExperiment(
         name=f'Fft_factorization_{fixed_order}_{softmax_fn}_{size}',
         run=TrainableFft,
         local_dir=result_dir,
@@ -701,11 +706,10 @@ def fft_experiment(fixed_order, softmax_fn, size, ntrials, nsteps, result_dir, n
         resources_per_trial={'cpu': nthreads, 'gpu': 0},
         stop={
             'training_iteration': 1 if smoke_test else 99999,
-            'negative_loss': -1e-8
+            'negative_loss': -1e-8,
         },
         config=config,
     )
-    return experiment
 
 
 @ex.capture
@@ -721,7 +725,7 @@ def fft_experiment_temp_annealing(fixed_order, softmax_fn, size, ntrials, nsteps
      }
     if (not fixed_order) and softmax_fn == 'softmax':
         config['semantic_loss_weight'] = sample_from(lambda spec: math.exp(random.uniform(math.log(5e-3), math.log(5e-1))))
-    experiment = RayExperiment(
+    return RayExperiment(
         name=f'Fft_factorization_Temp_{fixed_order}_{softmax_fn}_{size}',
         run=TrainableFftTempAnnealing,
         local_dir=result_dir,
@@ -730,11 +734,10 @@ def fft_experiment_temp_annealing(fixed_order, softmax_fn, size, ntrials, nsteps
         resources_per_trial={'cpu': nthreads, 'gpu': 0},
         stop={
             'training_iteration': 1 if smoke_test else 99999,
-            'negative_loss': -1e-8
+            'negative_loss': -1e-8,
         },
         config=config,
     )
-    return experiment
 
 
 @ex.capture
@@ -750,7 +753,7 @@ def fft_experiment_learn_perm(fixed_order, softmax_fn, size, ntrials, nsteps, re
      }
     if (not fixed_order) and softmax_fn == 'softmax':
         config['semantic_loss_weight'] = sample_from(lambda spec: math.exp(random.uniform(math.log(5e-3), math.log(5e-1))))
-    experiment = RayExperiment(
+    return RayExperiment(
         name=f'Fft_factorization_Learnperm_{fixed_order}_{softmax_fn}_{size}',
         run=TrainableFftLearnPerm,
         local_dir=result_dir,
@@ -763,7 +766,6 @@ def fft_experiment_learn_perm(fixed_order, softmax_fn, size, ntrials, nsteps, re
         },
         config=config,
     )
-    return experiment
 
 
 @ex.capture
@@ -776,7 +778,7 @@ def fft_experiment_block(trainable, size, ntrials, nsteps, nepochsvalid, result_
         'n_epochs_per_validation': nepochsvalid,
         'complex': True,
      }
-    experiment = RayExperiment(
+    return RayExperiment(
         name=f'Fft_factorization_{trainable.__name__}_{size}',
         run=trainable,
         local_dir=result_dir,
@@ -785,11 +787,10 @@ def fft_experiment_block(trainable, size, ntrials, nsteps, nepochsvalid, result_
         resources_per_trial={'cpu': nthreads, 'gpu': 0},
         stop={
             'training_iteration': 1 if smoke_test else 99999,
-            'negative_loss': -1e-8
+            'negative_loss': -1e-8,
         },
         config=config,
     )
-    return experiment
 
 
 @ex.automain
@@ -830,6 +831,6 @@ def run(result_dir, nmaxepochs, nthreads):
     with checkpoint_path.open('wb') as f:
         pickle.dump(trials, f)
 
-    ex.add_artifact(str(checkpoint_path))
+    ex.add_artifact(checkpoint_path)
     return min(losses + polished_losses)
 

@@ -9,7 +9,10 @@ import torch.nn.functional as F
 
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
-os.environ['PYTHONPATH'] = project_root + ":" + os.environ.get('PYTHONPATH', '')
+os.environ['PYTHONPATH'] = f"{project_root}:" + os.environ.get(
+    'PYTHONPATH', ''
+)
+
 from butterfly import Butterfly
 from butterfly.butterfly_multiply import butterfly_mult_untied
 import permutation_utils as perm
@@ -160,12 +163,9 @@ class PResNet(nn.Module):
                 nn.BatchNorm2d(planes * block.expansion),
             )
 
-        layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample))
+        layers = [block(self.inplanes, planes, stride, downsample)]
         self.inplanes = planes * block.expansion
-        for _ in range(1, blocks):
-            layers.append(block(self.inplanes, planes))
-
+        layers.extend(block(self.inplanes, planes) for _ in range(1, blocks))
         return nn.Sequential(*layers)
 
     def forward(self, x):
@@ -282,10 +282,8 @@ class TensorPermutation(nn.Module):
         elif perm == 'sample':
             perm_fn = self.perm_type.sample_perm
         else: assert False, f"Permutation type {perm} not supported."
-        # return shape (rank, s, n, n)
-        perms = torch.stack([perm_fn(p) for p in self.permute], dim=0)
         # print("get_permutations:", perms.shape)
-        return perms
+        return torch.stack([perm_fn(p) for p in self.permute], dim=0)
 
     def entropy(self, p):
         ents = torch.stack([perm.entropy(p) for perm in self.permute], dim=0) # (rank,)
@@ -361,11 +359,8 @@ class ButterflyPermutation(Permutation):
         if self.stochastic:
             self.mean_temp = 1.0
             self.sample_temp = temp
-            if hard:
-                self.generate_fn = self.sample_hard_perm
-            else:
-                self.generate_fn = self.sample_soft_perm # add this attr for efficiency (avoid casing in every call to generate())
-            # self.sample_method = 'gumbel'
+            self.generate_fn = self.sample_hard_perm if hard else self.sample_soft_perm
+                # self.sample_method = 'gumbel'
         else:
             self.mean_temp = temp
             self.generate_fn = self.mean_perm
@@ -427,16 +422,10 @@ class ButterflyPermutation(Permutation):
             def binary_ent(p):
                 eps = 1e-10
                 return -(p * torch.log2(eps+p) + (1-p)*torch.log2(1-p+eps))
+
             _twiddle = self.map_twiddle(self.twiddle)
             ent1 = torch.sum(binary_ent(_twiddle))
             return ent1
-            # could be better to not map at all
-            x = torch.exp(-self.twiddle)
-            ent2 = torch.log2(1. + x) + self.twiddle * (x/(1.+x))
-            ent2 = torch.sum(ent2)
-            print(ent1-ent2)
-            return ent2
-
         if p is None:
             perms = self.generate_perm()
         elif p == 'mean':
@@ -462,7 +451,7 @@ class ButterflyPermutation(Permutation):
         elif self.param=='ortho2':
             return torch.cos(twiddle)**2
         else:
-            assert False, f"Unreachable"
+            assert False, "Unreachable"
 
     def compute_perm(self, twiddle, strides, squeeze=True):
         """
@@ -490,21 +479,16 @@ class ButterflyPermutation(Permutation):
         # TODO isn't scaling mean by temperature
         # print("mean_perm twiddle REQUIRES GRAD: ", self.twiddle.requires_grad)
         _twiddle = self.map_twiddle(self.twiddle)
-        p = self.compute_perm(_twiddle, self.strides)
         # print("mean_perm REQUIRES GRAD: ", p.requires_grad)
-        return p
+        return self.compute_perm(_twiddle, self.strides)
 
     def mle_perm(self):
         _twiddle = self.map_twiddle(self.twiddle)
         hard_twiddle = torch.where(_twiddle > 0.5, torch.tensor(1.0, device=_twiddle.device), torch.tensor(0.0, device=_twiddle.device))
-        p = self.compute_perm(hard_twiddle, self.strides)
-        return p
+        return self.compute_perm(hard_twiddle, self.strides)
 
     def sample_perm(self, sample_shape=()):
-        if self.stochastic:
-            return self.sample_soft_perm()
-        else:
-            return self.sample_hard_perm()
+        return self.sample_soft_perm() if self.stochastic else self.sample_hard_perm()
 
     def sample_soft_perm(self, sample_shape=()):
         sample_shape = (self.samples,)
@@ -561,10 +545,13 @@ class ButterflyPermutation(Permutation):
         # sample_twiddle = _twiddle.expand(sample_shape+_twiddle.shape)
         sample_twiddle.data = hard_twiddle # straight through estimator
         if self.training: assert sample_twiddle.requires_grad
-        # TODO can make this a lot faster
-
-        perms = torch.stack([self.compute_perm(twiddle, self.strides) for twiddle in sample_twiddle], dim=0) # (s, n, n)
-        return perms
+        return torch.stack(
+            [
+                self.compute_perm(twiddle, self.strides)
+                for twiddle in sample_twiddle
+            ],
+            dim=0,
+        )
 
         # logits = torch.stack((torch.log(tw), torch.zeros_like(tw)), dim=-1) # (depth, 1, log n, n/2, 2)
         # logits_noise = perm.add_gumbel_noise(logits, sample_shape) # alternate way of doing this: sample one uniform parameter instead of two gumbel
@@ -575,25 +562,20 @@ class ButterflyPermutation(Permutation):
 
 
 def PResNet18(pretrained=False, **kwargs):
-    model = PResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
-    return model
+    return PResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
 
 
 def PResNet34(pretrained=False, **kwargs):
-    model = PResNet(BasicBlock, [3, 4, 6, 3], **kwargs)
-    return model
+    return PResNet(BasicBlock, [3, 4, 6, 3], **kwargs)
 
 
 def PResNet50(pretrained=False, **kwargs):
-    model = PResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
-    return model
+    return PResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
 
 
 def PResNet101(pretrained=False, **kwargs):
-    model = PResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
-    return model
+    return PResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
 
 
 def PResNet152(pretrained=False, **kwargs):
-    model = PResNet(Bottleneck, [3, 8, 36, 3], **kwargs)
-    return model
+    return PResNet(Bottleneck, [3, 8, 36, 3], **kwargs)

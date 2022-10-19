@@ -83,8 +83,12 @@ def ops_transpose_mult(a, b, c, p0, p1, v):
     for i in range(1, m):
         S[i] = polymatmul(S[i - 1][:, 1::2], T[i][::2])
         S[i][:, :, :, :, :S[i - 1].shape[-1]] += S[i - 1][:, ::2]
-    result = polymatmul(S[m - 1][:, :, [1], :, :n-1], P_init).squeeze(1).squeeze(1).squeeze(1)
-    return result
+    return (
+        polymatmul(S[m - 1][:, :, [1], :, : n - 1], P_init)
+        .squeeze(1)
+        .squeeze(1)
+        .squeeze(1)
+    )
 
 
 def ops_transpose_mult_br(a, b, c, p0, p1, v):
@@ -136,8 +140,12 @@ def ops_transpose_mult_br(a, b, c, p0, p1, v):
     for i in range(1, m):
         S_br[i] = polymatmul(S_br[i - 1][:, (n >> (i + 1)):], T_br[i][:(n >> (i + 1))])
         S_br[i][:, :, :, :, :S_br[i - 1].shape[-1]] += S_br[i - 1][:, :(n >> (i + 1))]
-    result = polymatmul(S_br[m - 1][:, :, [1], :, :n-1], P_init).squeeze(1).squeeze(1).squeeze(1)
-    return result
+    return (
+        polymatmul(S_br[m - 1][:, :, [1], :, : n - 1], P_init)
+        .squeeze(1)
+        .squeeze(1)
+        .squeeze(1)
+    )
 
 
 def chebyshev_transpose_mult_slow(v):

@@ -15,7 +15,7 @@ def bitreversal_permutation(n):
     m = int(math.log2(n))
     assert n == 1 << m, 'n must be a power of 2'
     perm = np.arange(n).reshape(n, 1)
-    for i in range(m):
+    for _ in range(m):
         n1 = perm.shape[0] // 2
         perm = np.hstack((perm[:n1], perm[n1:]))
     return perm.squeeze(0)
@@ -41,5 +41,4 @@ def twiddle_normal_to_fast_format(twiddle):
         new_twiddle = new_twiddle.permute(0, 1, 3, 2, 4)
         new_twiddle = new_twiddle.reshape(nstack, n, 2).transpose(1, 2)
         twiddle_list.append(new_twiddle)
-    result = torch.stack(twiddle_list, dim=1)
-    return result
+    return torch.stack(twiddle_list, dim=1)

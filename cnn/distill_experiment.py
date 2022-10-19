@@ -2,7 +2,10 @@ import os, sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 # Add to $PYTHONPATH in addition to sys.path so that ray workers can see
-os.environ['PYTHONPATH'] = project_root + ":" + os.environ.get('PYTHONPATH', '')
+os.environ['PYTHONPATH'] = f"{project_root}:" + os.environ.get(
+    'PYTHONPATH', ''
+)
+
 
 import math
 from pathlib import Path
@@ -51,7 +54,7 @@ class TrainableModel(Trainable):
         elif config['dataset'] == 'imagenet':
             teacher_model = imagenet_models.__dict__[config['teacher_model']]()
 
-        modules = set([name for name, _ in teacher_model.named_modules()])
+        modules = {name for name, _ in teacher_model.named_modules()}
         assert model_args['layer'] in modules, f"{model_args['layer']} not in network"
 
         # get parameters from layer to replace to use in butterfly
@@ -167,7 +170,7 @@ def default_config():
     optimizer = 'SGD'  # Which optimizer to use, either Adam or SGD
     ntrials = 100  # Number of trials for hyperparameter tuning
     nmaxepochs = 10  # Maximum number of epochs
-    result_dir = project_root + '/cnn/ray_results'  # Directory to store results
+    result_dir = f'{project_root}/cnn/ray_results'
     train_dir = '/distillation/imagenet/activations'
     cuda = torch.cuda.is_available()  # Whether to use GPU
     smoke_test = False  # Finish quickly for testing
@@ -200,7 +203,7 @@ def distillation_experiment(model, model_args, optimizer,
         'pretrained': pretrained
         }
     model_args_print = '_'.join([f'{key}_{value}' for key,value in model_args.items()])
-    experiment = RayExperiment(
+    return RayExperiment(
         name=f'{model}_{model_args_print}_{optimizer}',
         run=TrainableModel,
         local_dir=result_dir,
@@ -212,7 +215,6 @@ def distillation_experiment(model, model_args, optimizer,
         stop={"training_iteration": 1 if smoke_test else 9999},
         config=config,
     )
-    return experiment
 
 
 @ex.automain
@@ -235,5 +237,5 @@ def run(model, result_dir, nmaxepochs, grace_period):
     with checkpoint_path.open('wb') as f:
         pickle.dump(trials, f)
 
-    ex.add_artifact(str(checkpoint_path))
+    ex.add_artifact(checkpoint_path)
     return min(loss)

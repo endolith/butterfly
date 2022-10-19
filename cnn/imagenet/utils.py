@@ -14,7 +14,7 @@ def should_backup_checkpoint(args):
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar', checkpoint_dir='./', backup_filename=None):
     if (not torch.distributed.is_initialized()) or torch.distributed.get_rank() == 0:
         filename = os.path.join(checkpoint_dir, filename)
-        print("SAVING {}".format(filename))
+        print(f"SAVING {filename}")
         torch.save(state, filename)
         if is_best:
             shutil.copyfile(filename, os.path.join(checkpoint_dir, 'model_best.pth.tar'))

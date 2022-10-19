@@ -96,5 +96,4 @@ class KOP2d(nn.Module):
         w_f = self.Kd(self.weight)
         # prod = (x_f.unsqueeze(1) * w_f).sum(dim=2)
         prod = complex_matmul(x_f.permute(2, 3, 0, 1), w_f.permute(2, 3, 1, 0)).permute(2, 3, 0, 1)
-        out = self.K2(prod)
-        return out
+        return self.K2(prod)

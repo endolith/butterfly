@@ -2,7 +2,10 @@ import os, sys, subprocess
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 # Add to $PYTHONPATH in addition to sys.path so that ray workers can see
-os.environ['PYTHONPATH'] = project_root + ":" + os.environ.get('PYTHONPATH', '')
+os.environ['PYTHONPATH'] = f"{project_root}:" + os.environ.get(
+    'PYTHONPATH', ''
+)
+
 
 import math
 from pathlib import Path
@@ -296,7 +299,7 @@ def default_config():
     temp_max = None
     restore_perm = None
     resume_pth = None
-    result_dir = project_root + '/cnn/results'  # Directory to store results
+    result_dir = f'{project_root}/cnn/results'
     cuda = torch.cuda.is_available()  # Whether to use GPU
     smoke_test = False  # Finish quickly for testing
 
@@ -314,7 +317,8 @@ def cifar10_experiment(dataset, model, args, optimizer, nmaxepochs, lr_decay, lr
     assert optimizer in ['Adam', 'SGD'], 'Only Adam and SGD are supported'
     assert restore_perm is None or resume_pth is None # If we're fully resuming training from the checkpoint, no point in restoring any part of the model
     if restore_perm is not None:
-        restore_perm = '/dfs/scratch1/albertgu/learning-circuits/cnn/saved_perms/' + restore_perm
+        restore_perm = f'/dfs/scratch1/albertgu/learning-circuits/cnn/saved_perms/{restore_perm}'
+
         print("Restoring permutation from", restore_perm)
 
     args_rand = args.copy()
@@ -340,7 +344,7 @@ def cifar10_experiment(dataset, model, args, optimizer, nmaxepochs, lr_decay, lr
         anneal_entropy = sample_from(lambda _: math.exp(random.uniform(math.log(anneal_ent_min), math.log(anneal_ent_max)))),
 
     name_smoke_test = 'smoke_' if smoke_test else '' # for easy finding and deleting unimportant logs
-    name_args = '_'.join([k+':'+str(v) for k,v in args.items()])
+    name_args = '_'.join([f'{k}:{str(v)}' for k,v in args.items()])
     config={
         'optimizer': optimizer,
         # 'lr': sample_from(lambda spec: math.exp(random.uniform(math.log(2e-5), math.log(1e-2)) if optimizer == 'Adam'
@@ -373,9 +377,9 @@ def cifar10_experiment(dataset, model, args, optimizer, nmaxepochs, lr_decay, lr
     commit_id = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).strip().decode('utf-8')
     stopping_criteria = {"training_iteration": 1 if smoke_test else nmaxepochs}
     if unsupervised: # TODO group all the unsupervised casework together
-        stopping_criteria.update({'model_ent': 200, 'neg_ent': -5.0})
+        stopping_criteria |= {'model_ent': 200, 'neg_ent': -5.0}
 
-    experiment = RayExperiment(
+    return RayExperiment(
         # name=f'pcifar10_{model}_{args}_{optimizer}_lr_decay_{lr_decay}_weight_decay_{weight_decay}',
         name=f'{name_smoke_test}{dataset.lower()}_{model}_{name_args}_{optimizer}_epochs_{nmaxepochs}_plr_{plr_min}-{plr_max}_{timestamp}_{commit_id}',
         # name=f'{dataset.lower()}_{model}_{args_orig}_{optimizer}_epochs_{nmaxepochs}_lr_decay_{lr_decay}_plr_{plr_min}-{plr_max}_tvsym_{tv_sym}_{timestamp}_{commit_id}',
@@ -393,7 +397,6 @@ def cifar10_experiment(dataset, model, args, optimizer, nmaxepochs, lr_decay, lr
         restore=resume_pth,
         config=config,
     )
-    return experiment
 
 
 @ex.automain
@@ -424,5 +427,5 @@ def run(model, result_dir, nmaxepochs, unsupervised):
     with checkpoint_path.open('wb') as f:
         pickle.dump(trials, f)
 
-    ex.add_artifact(str(checkpoint_path))
+    ex.add_artifact(checkpoint_path)
     return max(accuracy)
