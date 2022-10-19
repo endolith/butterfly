@@ -36,8 +36,9 @@ def _make_scheduler(args):
     if args.scheduler in _SCHEDULERS:
         return _SCHEDULERS[args.scheduler](**args.scheduler_config)
     else:
-        raise TuneError("Unknown scheduler: {}, should be one of {}".format(
-            args.scheduler, _SCHEDULERS.keys()))
+        raise TuneError(
+            f"Unknown scheduler: {args.scheduler}, should be one of {_SCHEDULERS.keys()}"
+        )
 
 
 def _find_checkpoint_dir(exp):
@@ -50,8 +51,8 @@ def _prompt_restore(checkpoint_dir, resume):
     restore = False
     if TrialRunner.checkpoint_exists(checkpoint_dir):
         if resume == "prompt":
-            msg = ("Found incomplete experiment at {}. "
-                   "Would you like to resume it?".format(checkpoint_dir))
+            msg = f"Found incomplete experiment at {checkpoint_dir}. Would you like to resume it?"
+
             restore = click.confirm(msg, default=False)
             if restore:
                 logger.info("Tip: to always resume, "
@@ -65,8 +66,7 @@ def _prompt_restore(checkpoint_dir, resume):
             logger.info("Tip: to resume incomplete experiments, "
                         "pass resume='prompt' or resume=True to run()")
     else:
-        logger.info(
-            "Did not find checkpoint file in {}.".format(checkpoint_dir))
+        logger.info(f"Did not find checkpoint file in {checkpoint_dir}.")
     return restore
 
 
@@ -228,10 +228,12 @@ def run(run_or_experiment,
             metadata_checkpoint_dir=checkpoint_dir,
             launch_web_server=with_server,
             server_port=server_port,
-            verbose=bool(verbose > 1),
+            verbose=verbose > 1,
             queue_trials=queue_trials,
             reuse_actors=reuse_actors,
-            trial_executor=trial_executor)
+            trial_executor=trial_executor,
+        )
+
 
     if verbose:
         print(runner.debug_string(max_debug=99999))
@@ -267,12 +269,11 @@ def run(run_or_experiment,
 
     wait_for_log_sync()
 
-    errored_trials = []
-    for trial in runner.get_trials():
-        if trial.status != Trial.TERMINATED:
-            errored_trials += [trial]
-
-    if errored_trials:
+    if errored_trials := [
+        trial
+        for trial in runner.get_trials()
+        if trial.status != Trial.TERMINATED
+    ]:
         if raise_on_failed_trial:
             raise TuneError("Trials did not complete", errored_trials)
         else:

@@ -11,10 +11,10 @@ test_folder   = './test/'
 os.mkdir(test_folder)
 val_dict = {}
 with open('./val/val_annotations.txt', 'r') as f:
-    for line in f.readlines():
+    for line in f:
         split_line = line.split('\t')
         val_dict[split_line[0]] = split_line[1]
-        
+
 paths = glob.glob('./val/images/*')
 for path in paths:
     file = path.split('/')[-1]
@@ -25,8 +25,8 @@ for path in paths:
     if not os.path.exists(test_folder + str(folder)):
         os.mkdir(test_folder + str(folder))
         os.mkdir(test_folder + str(folder) + '/images')
-        
-        
+
+
 for path in paths:
     file = path.split('/')[-1]
     folder = val_dict[file]
@@ -35,5 +35,5 @@ for path in paths:
     else:
         dest = test_folder + str(folder) + '/images/' + str(file)
     move(path, dest)
-    
+
 rmdir('./val/images')

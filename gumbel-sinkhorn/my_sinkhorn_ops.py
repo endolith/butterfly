@@ -30,7 +30,7 @@ def my_sample_gumbel(shape, eps=1e-10):
 def simple_sinkhorn(MatrixA, n_iter = 20):
     #performing simple Sinkhorn iterations.
 
-    for i in range(n_iter):
+    for _ in range(n_iter):
         MatrixA /= MatrixA.sum(dim=1, keepdim=True)
         MatrixA /= MatrixA.sum(dim=2, keepdim=True)
     return MatrixA
@@ -64,7 +64,7 @@ def my_sinkhorn(log_alpha, n_iters = 20):
     n = log_alpha.size()[1]
     log_alpha = log_alpha.view(-1, n, n)
 
-    for i in range(n_iters):
+    for _ in range(n_iters):
         # torch.logsumexp(input, dim, keepdim, out=None)
         #Returns the log of summed exponentials of each row of the input tensor in the given dimension dim
         #log_alpha -= (torch.logsumexp(log_alpha, dim=2, keepdim=True)).view(-1, n, 1)
@@ -243,8 +243,7 @@ def my_permute_batch_split(batch_split, permutations):
     n_objects = permutations.size()[1]
 
     permutations = permutations.view(batch_size, n_objects, -1)
-    perm_batch_split = torch.gather(batch_split, 1, permutations)
-    return perm_batch_split
+    return torch.gather(batch_split, 1, permutations)
 
 
 def my_listperm2matperm(listperm):

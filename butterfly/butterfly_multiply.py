@@ -66,7 +66,17 @@ def butterfly_mult_torch(twiddle, input, increasing_stride=True, return_intermed
             output_reshape = output.view(batch_size, nstack, n // (2 * stride), 1, 2, stride)
             output = (t.unsqueeze(1) * output_reshape).sum(dim=4)
             intermediates.append(output)
-        return output.view(batch_size, nstack, n) if not return_intermediates else torch.stack([intermediate.view(batch_size, nstack, n) for intermediate in intermediates])
+        return (
+            torch.stack(
+                [
+                    intermediate.view(batch_size, nstack, n)
+                    for intermediate in intermediates
+                ]
+            )
+            if return_intermediates
+            else output.view(batch_size, nstack, n)
+        )
+
     else:  # complex
         output = input.contiguous()
         intermediates = [output]
@@ -76,7 +86,16 @@ def butterfly_mult_torch(twiddle, input, increasing_stride=True, return_intermed
             output_reshape = output.view(batch_size, nstack, n // (2 * stride), 1, 2, stride, 2)
             output = complex_mul(t.unsqueeze(1), output_reshape).sum(dim=4)
             intermediates.append(output)
-        return output.view(batch_size, nstack, n, 2) if not return_intermediates else torch.stack([intermediate.view(batch_size, nstack, n, 2) for intermediate in intermediates])
+        return (
+            torch.stack(
+                [
+                    intermediate.view(batch_size, nstack, n, 2)
+                    for intermediate in intermediates
+                ]
+            )
+            if return_intermediates
+            else output.view(batch_size, nstack, n, 2)
+        )
 
 
 class ButterflyMult(torch.autograd.Function):
@@ -149,7 +168,17 @@ def butterfly_mult_untied_torch(twiddle, input, increasing_stride=True, return_i
             output_reshape = output.view(batch_size, nstack, n // (2 * stride), 1, 2, stride)
             output = (t * output_reshape).sum(dim=4)
             intermediates.append(output)
-        return output.view(batch_size, nstack, n) if not return_intermediates else torch.stack([intermediate.view(batch_size, nstack, n) for intermediate in intermediates])
+        return (
+            torch.stack(
+                [
+                    intermediate.view(batch_size, nstack, n)
+                    for intermediate in intermediates
+                ]
+            )
+            if return_intermediates
+            else output.view(batch_size, nstack, n)
+        )
+
     else:  # complex
         output = input.contiguous()
         intermediates = [output]
@@ -159,7 +188,16 @@ def butterfly_mult_untied_torch(twiddle, input, increasing_stride=True, return_i
             output_reshape = output.view(batch_size, nstack, n // (2 * stride), 1, 2, stride, 2)
             output = complex_mul(t, output_reshape).sum(dim=4)
             intermediates.append(output)
-        return output.view(batch_size, nstack, n, 2) if not return_intermediates else torch.stack([intermediate.view(batch_size, nstack, n, 2) for intermediate in intermediates])
+        return (
+            torch.stack(
+                [
+                    intermediate.view(batch_size, nstack, n, 2)
+                    for intermediate in intermediates
+                ]
+            )
+            if return_intermediates
+            else output.view(batch_size, nstack, n, 2)
+        )
 
 
 class ButterflyMultUntied(torch.autograd.Function):
@@ -181,10 +219,16 @@ class ButterflyMultUntied(torch.autograd.Function):
         if not is_training and not input.is_cuda and input.dim() == 3 and input.dtype == torch.float and input.shape[-1] > 8:
             output = butterfly_multiply_untied_eval(twiddle, input, increasing_stride)
         else:
-            if not fast:
-                output = butterfly_multiply_untied(twiddle, input, increasing_stride, False)
-            else:
-                output = butterfly_multiply_untied_forward_fast(twiddle, input, increasing_stride)
+            output = (
+                butterfly_multiply_untied_forward_fast(
+                    twiddle, input, increasing_stride
+                )
+                if fast
+                else butterfly_multiply_untied(
+                    twiddle, input, increasing_stride, False
+                )
+            )
+
         ctx.save_for_backward(twiddle, input)
         ctx._increasing_stride = increasing_stride
         ctx._fast = fast
@@ -207,10 +251,16 @@ class ButterflyMultUntied(torch.autograd.Function):
         fast = ctx._fast
         n = input.shape[2]
         if input.dim() == 3 and n <= 1024 and input.is_cuda:
-            if not fast:
-                d_coefficients, d_input = butterfly_multiply_untied_forward_backward(twiddle, input, grad, increasing_stride)
-            else:
-                d_coefficients, d_input = butterfly_multiply_untied_forward_backward_fast(twiddle, input, grad, increasing_stride)
+            d_coefficients, d_input = (
+                butterfly_multiply_untied_forward_backward_fast(
+                    twiddle, input, grad, increasing_stride
+                )
+                if fast
+                else butterfly_multiply_untied_forward_backward(
+                    twiddle, input, grad, increasing_stride
+                )
+            )
+
         else:
             output_and_intermediate = butterfly_multiply_untied(twiddle, input, increasing_stride, True)
             d_coefficients, d_input = butterfly_multiply_untied_backward(grad, twiddle, output_and_intermediate, increasing_stride)
@@ -255,11 +305,10 @@ def butterfly_ortho_mult_tied(twiddle, input, increasing_stride):
     n = input.shape[2]
     if input.dim() == 3 and n <= 1024 and input.is_cuda:
         return ButterflyOrthoMultTied.apply(twiddle, input, increasing_stride)
-    else:
-        c, s = torch.cos(twiddle), torch.sin(twiddle)
-        twiddle = torch.stack((torch.stack((c, -s), dim=-1),
-                               torch.stack((s, c), dim=-1)), dim=-2)
-        return butterfly_mult(twiddle, input, increasing_stride)
+    c, s = torch.cos(twiddle), torch.sin(twiddle)
+    twiddle = torch.stack((torch.stack((c, -s), dim=-1),
+                           torch.stack((s, c), dim=-1)), dim=-2)
+    return butterfly_mult(twiddle, input, increasing_stride)
 
 
 def butterfly_ortho_mult_tied_torch(twiddle, input, increasing_stride):
@@ -305,11 +354,10 @@ def butterfly_ortho_mult_untied(twiddle, input, increasing_stride):
     n = input.shape[2]
     if input.dim() == 3 and n <= 1024 and input.is_cuda:
         return ButterflyOrthoMultUntied.apply(twiddle, input, increasing_stride)
-    else:
-        c, s = torch.cos(twiddle), torch.sin(twiddle)
-        twiddle = torch.stack((torch.stack((c, -s), dim=-1),
-                               torch.stack((s, c), dim=-1)), dim=-2)
-        return butterfly_mult_untied(twiddle, input, increasing_stride, True, False)
+    c, s = torch.cos(twiddle), torch.sin(twiddle)
+    twiddle = torch.stack((torch.stack((c, -s), dim=-1),
+                           torch.stack((s, c), dim=-1)), dim=-2)
+    return butterfly_mult_untied(twiddle, input, increasing_stride, True, False)
 
 
 def butterfly_ortho_mult_untied_torch(twiddle, input, increasing_stride):
@@ -330,10 +378,12 @@ class BbtMultUntied(torch.autograd.Function):
         Returns:
             output: (batch_size, nstack, n)
         """
-        if not fast:
-            output = bbt_multiply_untied(twiddle, input)
-        else:
-            output = butterfly_bbs_multiply_untied_forward_fast(twiddle, input)
+        output = (
+            butterfly_bbs_multiply_untied_forward_fast(twiddle, input)
+            if fast
+            else bbt_multiply_untied(twiddle, input)
+        )
+
         ctx.save_for_backward(twiddle, input)
         ctx._fast = fast
         return output
@@ -349,10 +399,14 @@ class BbtMultUntied(torch.autograd.Function):
         """
         twiddle, input = ctx.saved_tensors
         fast = ctx._fast
-        if not fast:
-            d_coefficients, d_input = bbt_multiply_untied_forward_backward(twiddle, input, grad)
-        else:
-            d_coefficients, d_input = butterfly_bbs_multiply_untied_forward_backward_fast(twiddle, input, grad)
+        d_coefficients, d_input = (
+            butterfly_bbs_multiply_untied_forward_backward_fast(
+                twiddle, input, grad
+            )
+            if fast
+            else bbt_multiply_untied_forward_backward(twiddle, input, grad)
+        )
+
         return d_coefficients, d_input, None
 
 
@@ -361,17 +415,16 @@ def bbt_mult_untied(twiddle, input, fast=True):
     m = int(math.log2(n))
     nblocks = twiddle.shape[1] // (2 * m)
     assert nblocks * 2 * m == twiddle.shape[1], 'twiddle must have shape (nstack, nblocks * 2 * log n, n / 2, 2, 2)'
-    if n <= 1024 and input.is_cuda and nblocks <= 14:  # CUDA only supports nblocks <= 14
+    if n <= 1024 and input.is_cuda and nblocks <= 14:
         return BbtMultUntied.apply(twiddle, input, fast)
-    else:
-        output = input
-        reverse_idx = torch.arange(m - 1, -1, -1, device=twiddle.device)
-        for t in twiddle.chunk(nblocks, dim=1):
-            # output = butterfly_mult_untied(t[:, :m].flip(1), output, False)
-            # flip is crazy slow, advanced indexing is slightly faster
-            output = butterfly_mult_untied(t[:, reverse_idx], output, False, True, False)
-            output = butterfly_mult_untied(t[:, m:], output, True, True, False)
-        return output
+    output = input
+    reverse_idx = torch.arange(m - 1, -1, -1, device=twiddle.device)
+    for t in twiddle.chunk(nblocks, dim=1):
+        # output = butterfly_mult_untied(t[:, :m].flip(1), output, False)
+        # flip is crazy slow, advanced indexing is slightly faster
+        output = butterfly_mult_untied(t[:, reverse_idx], output, False, True, False)
+        output = butterfly_mult_untied(t[:, m:], output, True, True, False)
+    return output
 
 
 def bbt_mult_untied_torch(twiddle, input):
@@ -434,11 +487,10 @@ def bbt_ortho_mult_untied(twiddle, input):
     nblocks = twiddle.shape[1] // (2 * m)
     if n <= 1024 and input.is_cuda:
         return BbtOrthoMultUntied.apply(twiddle, input)
-    else:
-        c, s = torch.cos(twiddle), torch.sin(twiddle)
-        twiddle = torch.stack((torch.stack((c, -s), dim=-1),
-                               torch.stack((s, c), dim=-1)), dim=-2)
-        return bbt_mult_untied(twiddle, input)
+    c, s = torch.cos(twiddle), torch.sin(twiddle)
+    twiddle = torch.stack((torch.stack((c, -s), dim=-1),
+                           torch.stack((s, c), dim=-1)), dim=-2)
+    return bbt_mult_untied(twiddle, input)
 
 
 def bbt_ortho_mult_untied_torch(twiddle, input):
@@ -628,22 +680,21 @@ def bbt_mult_conv2d(twiddle, input, kernel_size, padding):
     m = int(math.log2(n))
     nblocks = twiddle.shape[1] // (2 * m)
     assert nblocks * 2 * m == twiddle.shape[1], 'twiddle must have shape (nstack, nblocks * 2 * log n, n / 2, 2, 2)'
-    if n <= 1024 and input.is_cuda and nblocks <= 14:  # CUDA only supports nblocks <= 14
+    if n <= 1024 and input.is_cuda and nblocks <= 14:
         return BbtMultConv2d.apply(twiddle, input, kernel_size, padding)
-    else:
-        output = input
-        reverse_idx = torch.arange(m - 1, -1, -1, device=twiddle.device)
-        first = True
-        for t in twiddle.chunk(nblocks, dim=1):
-            # output = butterfly_mult_conv2d(t[:, :m].flip(1), output, False)
-            # flip is crazy slow, advanced indexing is slightly faster
-            if first:
-                output = butterfly_mult_conv2d(t[:, reverse_idx], output, kernel_size, padding, False)
-                first = False
-            else:
-                output = butterfly_mult_untied(t[:, reverse_idx], output, False, True, False)
-            output = butterfly_mult_untied(t[:, m:], output, True, True, False)
-        return output
+    output = input
+    reverse_idx = torch.arange(m - 1, -1, -1, device=twiddle.device)
+    first = True
+    for t in twiddle.chunk(nblocks, dim=1):
+        # output = butterfly_mult_conv2d(t[:, :m].flip(1), output, False)
+        # flip is crazy slow, advanced indexing is slightly faster
+        if first:
+            output = butterfly_mult_conv2d(t[:, reverse_idx], output, kernel_size, padding, False)
+            first = False
+        else:
+            output = butterfly_mult_untied(t[:, reverse_idx], output, False, True, False)
+        output = butterfly_mult_untied(t[:, m:], output, True, True, False)
+    return output
 
 
 def bbt_mult_conv2d_torch(twiddle, input, kernel_size, padding):
@@ -719,7 +770,17 @@ def butterfly_mult_factors(twiddle, input, increasing_stride=True, return_interm
             output_reshape = output.view(batch_size * n // (2 * stride), 2, stride)
             output = butterfly_factor_mult(t, output_reshape)
             intermediates.append(output)
-        return output.view(batch_size, n) if not return_intermediates else torch.stack([intermediate.view(batch_size, n) for intermediate in intermediates])
+        return (
+            torch.stack(
+                [
+                    intermediate.view(batch_size, n)
+                    for intermediate in intermediates
+                ]
+            )
+            if return_intermediates
+            else output.view(batch_size, n)
+        )
+
     else:  # complex
         for log_stride in range(m) if increasing_stride else range(m)[::-1]:
             stride = 1 << log_stride
@@ -727,7 +788,16 @@ def butterfly_mult_factors(twiddle, input, increasing_stride=True, return_interm
             output_reshape = output.view(batch_size * n // (2 * stride), 2, stride, 2)
             output = butterfly_factor_mult(t, output_reshape)
             intermediates.append(output)
-        return output.view(batch_size, n, 2) if not return_intermediates else torch.stack([intermediate.view(batch_size, n, 2) for intermediate in intermediates])
+        return (
+            torch.stack(
+                [
+                    intermediate.view(batch_size, n, 2)
+                    for intermediate in intermediates
+                ]
+            )
+            if return_intermediates
+            else output.view(batch_size, n, 2)
+        )
 
 
 def butterfly_mult_dyadic_torch(twiddle, input, log_strides, return_intermediates=False):
@@ -754,7 +824,17 @@ def butterfly_mult_dyadic_torch(twiddle, input, log_strides, return_intermediate
             output_reshape = output.view(batch_size, nstack, n // (2 * stride), 1, 2, stride)
             output = (t * output_reshape).sum(dim=4)
             intermediates.append(output)
-        return output.view(batch_size, nstack, n) if not return_intermediates else torch.stack([intermediate.view(batch_size, nstack, n) for intermediate in intermediates])
+        return (
+            torch.stack(
+                [
+                    intermediate.view(batch_size, nstack, n)
+                    for intermediate in intermediates
+                ]
+            )
+            if return_intermediates
+            else output.view(batch_size, nstack, n)
+        )
+
     else:  # complex
         output = input.contiguous()
         intermediates = [output]
@@ -764,4 +844,13 @@ def butterfly_mult_dyadic_torch(twiddle, input, log_strides, return_intermediate
             output_reshape = output.view(batch_size, nstack, n // (2 * stride), 1, 2, stride, 2)
             output = complex_mul(t, output_reshape).sum(dim=4)
             intermediates.append(output)
-        return output.view(batch_size, nstack, n, 2) if not return_intermediates else torch.stack([intermediate.view(batch_size, nstack, n, 2) for intermediate in intermediates])
+        return (
+            torch.stack(
+                [
+                    intermediate.view(batch_size, nstack, n, 2)
+                    for intermediate in intermediates
+                ]
+            )
+            if return_intermediates
+            else output.view(batch_size, nstack, n, 2)
+        )

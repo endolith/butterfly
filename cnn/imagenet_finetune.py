@@ -190,9 +190,8 @@ def main(args):
     if args.fp16:
         assert torch.backends.cudnn.enabled, "fp16 mode requires cudnn backend to be enabled."
 
-    if args.static_loss_scale != 1.0:
-        if not args.fp16:
-            print("Warning:  if --fp16 is not used, static_loss_scale will be ignored.")
+    if args.static_loss_scale != 1.0 and not args.fp16:
+        print("Warning:  if --fp16 is not used, static_loss_scale will be ignored.")
 
     if args.optimizer_batch_size < 0:
         batch_size_multiplier = 1
@@ -330,7 +329,13 @@ def main(args):
                 struct=args.struct, softmax_struct=args.softmax_struct, sm_pooling=args.sm_pooling)
         current_state_dict_keys = model_and_loss.model.state_dict().keys()
         state_dict = {name: param for name, param in prev_state_dict.items() if name in current_state_dict_keys}
-        state_dict.update({layer_name + '.' + name: param for name, param in structured_params.items()})
+        state_dict.update(
+            {
+                f'{layer_name}.{name}': param
+                for name, param in structured_params.items()
+            }
+        )
+
         model_and_loss.model.load_state_dict(state_dict)
         if args.distributed:
             model_and_loss.distributed()

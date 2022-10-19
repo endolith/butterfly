@@ -23,11 +23,11 @@ def bitreversal_permutation(n, pytorch_format=False):
     log_n = int(math.log2(n))
     assert n == 1 << log_n, 'n must be a power of 2'
     perm = np.arange(n).reshape(n, 1)
-    for i in range(log_n):
+    for _ in range(log_n):
         n1 = perm.shape[0] // 2
         perm = np.hstack((perm[:n1], perm[n1:]))
     perm = perm.squeeze(0)
-    return perm if not pytorch_format else torch.tensor(perm)
+    return torch.tensor(perm) if pytorch_format else perm
 
 
 def wavelet_permutation(n, pytorch_format=False):
@@ -44,12 +44,12 @@ def wavelet_permutation(n, pytorch_format=False):
     assert n == 1 << log_n, 'n must be a power of 2'
     perm = np.arange(n)
     head, tail = perm[:], perm[:0]  # empty tail
-    for i in range(log_n):
+    for _ in range(log_n):
         even, odd = head[::2], head[1::2]
         head = even
         tail = np.hstack((odd, tail))
     perm = np.hstack((head, tail))
-    return perm if not pytorch_format else torch.tensor(perm)
+    return torch.tensor(perm) if pytorch_format else perm
 
 
 class FixedPermutation(nn.Module):
@@ -105,7 +105,7 @@ def perm_vec_to_mat(p: np.ndarray, left: bool = False) -> np.ndarray:
     matrix = np.zeros((n, n), dtype=int)
     matrix[p, np.arange(n, dtype=int)] = 1
     # Left-multiplication by the resulting matrix will result in the desired permutation.
-    return matrix if not left else matrix.T
+    return matrix.T if left else matrix
 
 
 def perm_mat_to_vec(m, left=False):
@@ -124,10 +124,15 @@ def is_2x2_block_diag(mat: np.ndarray) -> bool:
     Assumes that the matrix is square with even dimension.
     """
     nh = mat.shape[0] // 2
-    for block in [mat[:nh, :nh], mat[:nh, nh:], mat[nh:, :nh], mat[nh:, nh:]]:
-        if np.count_nonzero(block - np.diag(np.diagonal(block))):
-            return False  # there's a nonzero off-diagonal entry
-    return True
+    return not any(
+        np.count_nonzero(block - np.diag(np.diagonal(block)))
+        for block in [
+            mat[:nh, :nh],
+            mat[:nh, nh:],
+            mat[nh:, :nh],
+            mat[nh:, nh:],
+        ]
+    )
 
 
 def is_butterfly_factor(mat: np.ndarray, k: int) -> bool:
@@ -222,10 +227,7 @@ def half_balance(
             nodes.remove(old_node)
     perm = np.arange(n, dtype=int)
     perm[swap_low_locs], perm[swap_high_locs] = swap_high_locs, swap_low_locs
-    if not return_swap_locations:
-        return perm, v[perm]
-    else:
-        return swap_low_locs, v[perm]
+    return (swap_low_locs, v[perm]) if return_swap_locations else (perm, v[perm])
 
 
 def modular_balance(v: np.ndarray) -> Tuple[List[np.ndarray], np.ndarray]:
@@ -263,7 +265,7 @@ def is_modular_balanced(perm):
     assert n == 1 << log_n
     for j in (1 << k for k in range(1, log_n + 1)):
         for chunk in range(n // j):
-            mod_vals = set(perm[i] % j for i in range(chunk * j, (chunk + 1) * j))
+            mod_vals = {perm[i] % j for i in range(chunk * j, (chunk + 1) * j)}
             if len(mod_vals) != j:
                 return False
     return True
@@ -343,8 +345,16 @@ def perm2butterfly_slow(v: Union[np.ndarray, torch.Tensor],
     R_twiddle = torch.stack([matrix_to_butterfly_factor(r, log_k=i+1, pytorch_format=True)
                              for i, r in enumerate(R_perms)]).flip([0])
     twiddle = torch.stack([R_twiddle, L_twiddle]).unsqueeze(0)
-    b = Butterfly(n, n, bias=False, complex=complex, increasing_stride=False,
-                  init=twiddle if not complex else real2complex(twiddle), nblocks=2)
+    b = Butterfly(
+        n,
+        n,
+        bias=False,
+        complex=complex,
+        increasing_stride=False,
+        init=real2complex(twiddle) if complex else twiddle,
+        nblocks=2,
+    )
+
     return b
 
 
@@ -428,6 +438,14 @@ def perm2butterfly(v: Union[np.ndarray, torch.Tensor],
         twiddle_left_factors.append(left_factor)
     twiddle = torch.stack([torch.stack(twiddle_right_factors),
                            torch.stack(twiddle_left_factors).flip([0])]).unsqueeze(0)
-    b = Butterfly(n, n, bias=False, complex=complex, increasing_stride=False,
-                  init=twiddle if not complex else real2complex(twiddle), nblocks=2)
+    b = Butterfly(
+        n,
+        n,
+        bias=False,
+        complex=complex,
+        increasing_stride=False,
+        init=real2complex(twiddle) if complex else twiddle,
+        nblocks=2,
+    )
+
     return b

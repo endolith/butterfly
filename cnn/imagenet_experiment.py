@@ -2,7 +2,10 @@ import os, sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 # Add to $PYTHONPATH in addition to sys.path so that ray workers can see
-os.environ['PYTHONPATH'] = project_root + ":" + os.environ.get('PYTHONPATH', '')
+os.environ['PYTHONPATH'] = f"{project_root}:" + os.environ.get(
+    'PYTHONPATH', ''
+)
+
 
 import argparse, shutil, time, warnings
 import subprocess
@@ -231,10 +234,7 @@ def main():
 
 # item() is a recent addition, so this helps with backward compatibility.
 def to_python_float(t):
-    if hasattr(t, 'item'):
-        return t.item()
-    else:
-        return t[0]
+    return t.item() if hasattr(t, 'item') else t[0]
 
 class data_prefetcher():
     def __init__(self, loader, prefetch=True):

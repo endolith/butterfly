@@ -2,7 +2,10 @@ import os, sys, subprocess
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 # Add to $PYTHONPATH in addition to sys.path so that ray workers can see
-os.environ['PYTHONPATH'] = project_root + ":" + os.environ.get('PYTHONPATH', '')
+os.environ['PYTHONPATH'] = f"{project_root}:" + os.environ.get(
+    'PYTHONPATH', ''
+)
+
 
 import math
 from pathlib import Path
@@ -96,7 +99,7 @@ class TrainableBP(TrainableMatrixFactorization):
                     for _ in range(depth)
                 ]
             )
-        elif config['model'][0:3] == 'BBT' and (config['model'][3:]).isdigit():
+        elif config['model'][:3] == 'BBT' and (config['model'][3:]).isdigit():
             depth = int(config['model'][3:])
             param_type = config['param']
             self.model = nn.Sequential(
@@ -120,18 +123,7 @@ class TrainableBP(TrainableMatrixFactorization):
         elif config['model'] == 'butterfly':
             # e = int(config['model'][4:])
             self.model = Butterfly(in_size=size, out_size=size, complex=complex, **config['bfargs'])
-        # elif config['model'][0:3] == 'ODO':
-        #     if (config['model'][3:]).isdigit():
-        #         width = int(config['model'][3:])
-        #         self.model = Butterfly(in_size=size, out_size=size, bias=False, complex=False, param='odo', tied_weight=True, nblocks=0, expansion=width, diag_init='normal')
-        #     elif config['model'][3] == 'k':
-        #         k = int(config['model'][4:])
-        #         self.model = Butterfly(in_size=size, out_size=size, bias=False, complex=False, param='odo', tied_weight=True, nblocks=k, diag_init='normal')
-
-        # non-butterfly transforms
-        # elif config['model'][0:2] == 'TL' and (config['model'][2:]).isdigit():
-        #     rank = int(config['model'][2:])
-        elif config['model'][0:4] == 'rank' and (config['model'][4:]).isdigit():
+        elif config['model'][:4] == 'rank' and (config['model'][4:]).isdigit():
             rank = int(config['model'][4:])
             self.model = nn.Sequential(
                 nn.Linear(size, rank, bias=False),
@@ -154,7 +146,7 @@ class TrainableBP(TrainableMatrixFactorization):
     def freeze(self):
         try:
             for i, m in enumerate(self.model):
-                if isinstance(m, Permutation) or isinstance(m, PermutationFactor):
+                if isinstance(m, (Permutation, PermutationFactor)):
                     self.model[i] = FixedPermutation(m.argmax())
         except:
             pass
@@ -205,7 +197,7 @@ def default_config():
     nsteps = 400  # Number of steps per epoch
     nepochsvalid = 10  # Frequency of validation (polishing), in terms of epochs
     nmaxepochs = 200  # Maximum number of epochs
-    result_dir = project_root + '/learning_transforms/results_new'  # Directory to store results
+    result_dir = f'{project_root}/learning_transforms/results_new'
     cuda = torch.cuda.is_available()  # Whether to use GPU
     nthreads = 1  # Number of CPU threads per job
     smoke_test = False  # Finish quickly for testing
@@ -231,9 +223,9 @@ def transform_experiment(model, target, size, complex, param, lr_min, lr_max, nt
         'n_epochs_per_validation': nepochsvalid,
         'device': 'cuda' if cuda else 'cpu',
      }
-    b_args = '_'.join([k+':'+str(v) for k,v in b.items()])
+    b_args = '_'.join([f'{k}:{str(v)}' for k,v in b.items()])
     commit_id = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).strip().decode('utf-8')
-    experiment = RayExperiment(
+    return RayExperiment(
         # name=f'{commit_id}_{target}_factorization_{model}_{complex}_{size}_{param}',
         name=f'{size}_{target}_{model}_{b_args}_c{complex}_{commit_id}',
         run=TrainableBP,
@@ -243,11 +235,10 @@ def transform_experiment(model, target, size, complex, param, lr_min, lr_max, nt
         resources_per_trial={'cpu': nthreads, 'gpu': 0.25 if cuda else 0},
         stop={
             'training_iteration': 1 if smoke_test else 99999,
-            'negative_loss': -1e-8
+            'negative_loss': -1e-8,
         },
         config=config,
     )
-    return experiment
 
 
 @ex.automain
@@ -290,7 +281,10 @@ def run(model, target, size, result_dir, nmaxepochs, nthreads, cuda, b):
     with checkpoint_path.open('wb') as f:
         pickle.dump(trials, f)
 
-    ex.add_artifact(str(checkpoint_path))
-    if not min(losses + polished_losses) == -sorted_polished_trials[0].last_result['polished_negative_loss']:
+    ex.add_artifact(checkpoint_path)
+    if (
+        min(losses + polished_losses)
+        != -sorted_polished_trials[0].last_result['polished_negative_loss']
+    ):
         print("BEST LOSS", min(losses + polished_losses), "BEST POLISHED", -sorted_polished_trials[0].last_result['polished_negative_loss'])
     return size, target, model, b, nparameters, niterations, -sorted_polished_trials[0].last_result['polished_negative_loss']

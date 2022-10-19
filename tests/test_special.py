@@ -26,7 +26,7 @@ class ButterflySpecialTest(unittest.TestCase):
         n = 16
         input = torch.randn(batch_size, n, dtype=torch.complex64)
         for normalized in [False, True]:
-            out_torch = torch.fft.fft(input, norm=None if not normalized else 'ortho')
+            out_torch = torch.fft.fft(input, norm='ortho' if normalized else None)
             for br_first in [True, False]:
                 b = torch_butterfly.special.fft(n, normalized=normalized, br_first=br_first)
                 out = b(input)
@@ -36,8 +36,7 @@ class ButterflySpecialTest(unittest.TestCase):
         batch_size = 10
         n = 16
         input = torch.randn(batch_size, n, dtype=torch.complex64)
-        normalized = True
-        out_torch = torch.fft.fft(input, norm=None if not normalized else 'ortho')
+        out_torch = torch.fft.fft(input, norm=None if False else 'ortho')
         for br_first in [True, False]:
             b = torch_butterfly.special.fft_unitary(n, br_first=br_first)
             out = b(input)
@@ -48,7 +47,7 @@ class ButterflySpecialTest(unittest.TestCase):
         n = 16
         input = torch.randn(batch_size, n, dtype=torch.complex64)
         for normalized in [False, True]:
-            out_torch = torch.fft.ifft(input, norm=None if not normalized else 'ortho')
+            out_torch = torch.fft.ifft(input, norm='ortho' if normalized else None)
             for br_first in [True, False]:
                 b = torch_butterfly.special.ifft(n, normalized=normalized, br_first=br_first)
                 out = b(input)
@@ -58,8 +57,7 @@ class ButterflySpecialTest(unittest.TestCase):
         batch_size = 10
         n = 16
         input = torch.randn(batch_size, n, dtype=torch.complex64)
-        normalized = True
-        out_torch = torch.fft.ifft(input, norm=None if not normalized else 'ortho')
+        out_torch = torch.fft.ifft(input, norm=None if False else 'ortho')
         for br_first in [True, False]:
             b = torch_butterfly.special.ifft_unitary(n, br_first=br_first)
             out = b(input)
@@ -71,8 +69,14 @@ class ButterflySpecialTest(unittest.TestCase):
         input = torch.randn(batch_size, n)
         for type in [2, 3, 4]:
             for normalized in [False, True]:
-                out_sp = torch.tensor(scipy.fft.dct(input.numpy(), type=type,
-                                                    norm=None if not normalized else 'ortho'))
+                out_sp = torch.tensor(
+                    scipy.fft.dct(
+                        input.numpy(),
+                        type=type,
+                        norm='ortho' if normalized else None,
+                    )
+                )
+
                 b = torch_butterfly.special.dct(n, type=type, normalized=normalized)
                 out = b(input)
                 self.assertTrue(torch.allclose(out, out_sp, self.rtol, self.atol))
@@ -83,8 +87,14 @@ class ButterflySpecialTest(unittest.TestCase):
         input = torch.randn(batch_size, n)
         for type in [2, 4]:
             for normalized in [False, True]:
-                out_sp = torch.tensor(scipy.fft.dst(input.numpy(), type=type,
-                                                    norm=None if not normalized else 'ortho'))
+                out_sp = torch.tensor(
+                    scipy.fft.dst(
+                        input.numpy(),
+                        type=type,
+                        norm='ortho' if normalized else None,
+                    )
+                )
+
                 b = torch_butterfly.special.dst(n, type=type, normalized=normalized)
                 out = b(input)
                 self.assertTrue(torch.allclose(out, out_sp, self.rtol, self.atol))
@@ -93,7 +103,7 @@ class ButterflySpecialTest(unittest.TestCase):
         batch_size = 10
         n = 13
         for complex in [False, True]:
-            dtype = torch.float32 if not complex else torch.complex64
+            dtype = torch.complex64 if complex else torch.float32
             col = torch.randn(n, dtype=dtype)
             C = la.circulant(col.numpy())
             input = torch.randn(batch_size, n, dtype=dtype)
@@ -136,7 +146,7 @@ class ButterflySpecialTest(unittest.TestCase):
         batch_size = 10
         for n, m in [(13, 38), (27, 11)]:
             for complex in [False, True]:
-                dtype = torch.float32 if not complex else torch.complex64
+                dtype = torch.complex64 if complex else torch.float32
                 col = torch.randn(n, dtype=dtype)
                 row = torch.randn(m, dtype=dtype)
                 T = la.toeplitz(col.numpy(), row.numpy())
@@ -231,11 +241,13 @@ class ButterflySpecialTest(unittest.TestCase):
         n2 = 32
         input = torch.randn(batch_size, n2, n1, dtype=torch.complex64)
         for normalized in [False, True]:
-            out_torch = torch.fft.fftn(input, dim=(-1, -2),
-                                       norm=None if not normalized else 'ortho')
+            out_torch = torch.fft.fftn(
+                input, dim=(-1, -2), norm='ortho' if normalized else None
+            )
+
             # Just to show how fft2d is exactly 2 ffts on each dimension
-            input_f = torch.fft.fft(input, dim=-1, norm=None if not normalized else 'ortho')
-            out_fft = torch.fft.fft(input_f, dim=-2, norm=None if not normalized else 'ortho')
+            input_f = torch.fft.fft(input, dim=-1, norm='ortho' if normalized else None)
+            out_fft = torch.fft.fft(input_f, dim=-2, norm='ortho' if normalized else None)
             self.assertTrue(torch.allclose(out_torch, out_fft, self.rtol, self.atol))
             for br_first in [True, False]:
                 for flatten in [False, True]:
@@ -250,7 +262,10 @@ class ButterflySpecialTest(unittest.TestCase):
         n2 = 32
         input = torch.randn(batch_size, n2, n1, dtype=torch.complex64)
         normalized = True
-        out_torch = torch.fft.fftn(input, dim=(-1, -2), norm=None if not normalized else 'ortho')
+        out_torch = torch.fft.fftn(
+            input, dim=(-1, -2), norm='ortho' if normalized else None
+        )
+
         for br_first in [True, False]:
             b = torch_butterfly.special.fft2d_unitary(n1, n2, br_first=br_first)
             out = b(input)
@@ -262,11 +277,13 @@ class ButterflySpecialTest(unittest.TestCase):
         n2 = 16
         input = torch.randn(batch_size, n2, n1, dtype=torch.complex64)
         for normalized in [False, True]:
-            out_torch = torch.fft.ifftn(input, dim=(-1, -2),
-                                        norm=None if not normalized else 'ortho')
+            out_torch = torch.fft.ifftn(
+                input, dim=(-1, -2), norm='ortho' if normalized else None
+            )
+
             # Just to show how ifft2d is exactly 2 iffts on each dimension
-            input_f = torch.fft.ifft(input, dim=-1, norm=None if not normalized else 'ortho')
-            out_fft = torch.fft.ifft(input_f, dim=-2, norm=None if not normalized else 'ortho')
+            input_f = torch.fft.ifft(input, dim=-1, norm='ortho' if normalized else None)
+            out_fft = torch.fft.ifft(input_f, dim=-2, norm='ortho' if normalized else None)
             self.assertTrue(torch.allclose(out_torch, out_fft, self.rtol, self.atol))
             for br_first in [True, False]:
                 for flatten in [False, True]:
@@ -281,7 +298,10 @@ class ButterflySpecialTest(unittest.TestCase):
         n2 = 32
         input = torch.randn(batch_size, n2, n1, dtype=torch.complex64)
         normalized = True
-        out_torch = torch.fft.ifftn(input, dim=(-1, -2), norm=None if not normalized else 'ortho')
+        out_torch = torch.fft.ifftn(
+            input, dim=(-1, -2), norm='ortho' if normalized else None
+        )
+
         for br_first in [True, False]:
             b = torch_butterfly.special.ifft2d_unitary(n1, n2, br_first=br_first)
             out = b(input)

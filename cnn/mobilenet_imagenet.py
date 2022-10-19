@@ -155,7 +155,11 @@ class MobileNet(nn.Module):
                 layer = f'layers.{i}.conv2'
                 nblocks = int(struct.split('_')[1])
                 structured_param = distilled_params[layer, nblocks]
-                state_dict.update({layer + '.' + name: param for name, param in structured_param.items()})
+                state_dict |= {
+                    f'{layer}.{name}': param
+                    for name, param in structured_param.items()
+                }
+
         return state_dict
 
 

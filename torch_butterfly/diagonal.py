@@ -24,7 +24,12 @@ class Diagonal(nn.Module):
         else:
             assert size is not None
             self.size = size
-            dtype = torch.get_default_dtype() if not complex else real_dtype_to_complex[torch.get_default_dtype()]
+            dtype = (
+                real_dtype_to_complex[torch.get_default_dtype()]
+                if complex
+                else torch.get_default_dtype()
+            )
+
             self.diagonal = nn.Parameter(torch.randn(size, dtype=dtype))
             self.complex = complex
 

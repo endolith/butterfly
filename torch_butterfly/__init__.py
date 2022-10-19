@@ -19,7 +19,7 @@ def check_cuda_version():
         elif cuda_version < 10000:
             major, minor = int(str(cuda_version)[0]), int(str(cuda_version)[2])
         else:
-            major, minor = int(str(cuda_version)[0:2]), int(str(cuda_version)[3])
+            major, minor = int(str(cuda_version)[:2]), int(str(cuda_version)[3])
         t_major, t_minor = [int(x) for x in torch.version.cuda.split('.')]
 
         if t_major != major or t_minor != minor:

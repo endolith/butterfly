@@ -17,13 +17,13 @@ class ButterflyTest(unittest.TestCase):
         self.atol = 1e-5
 
     def test_multiply(self):
+        nstacks = 2
+        nblocks = 3
         for batch_size, n in [(10, 4096), (8192, 512)]:  # Test size smaller than 1024 and large batch size for race conditions
         # for batch_size, n in [(10, 64)]:
         # for batch_size, n in [(1, 2)]:
             log_n = int(math.log2(n))
-            nstacks = 2
-            nblocks = 3
-            for device in ['cpu'] + ([] if not torch.cuda.is_available() else ['cuda']):
+            for device in ['cpu'] + (['cuda'] if torch.cuda.is_available() else []):
             # for device in ['cuda']:
                 for complex in [False, True]:
                 # for complex in [False]:
@@ -31,7 +31,7 @@ class ButterflyTest(unittest.TestCase):
                     # for increasing_stride in [True]:
                         if batch_size > 1024 and (device == 'cpu'):
                             continue
-                        dtype = torch.float32 if not complex else torch.complex64
+                        dtype = torch.complex64 if complex else torch.float32
                         # complex randn already has the correct scaling of stddev=1.0
                         scaling = 1 / math.sqrt(2)
                         twiddle = torch.randn((nstacks, nblocks, log_n, n // 2, 2, 2), dtype=dtype, requires_grad=True, device=device) * scaling
@@ -66,10 +66,10 @@ class ButterflyTest(unittest.TestCase):
             log_n = int(math.log2(n))
             for input_size in [n // 2 - 1, n - 4, 2 * n + 7]:
                 for output_size in [None, n // 2 - 2, n - 5]:
-                    for device in ['cpu'] + ([] if not torch.cuda.is_available() else ['cuda']):
+                    for device in ['cpu'] + (['cuda'] if torch.cuda.is_available() else []):
                         for complex in [False, True]:
                             for increasing_stride in [True, False]:
-                                dtype = torch.float32 if not complex else torch.complex64
+                                dtype = torch.complex64 if complex else torch.float32
                                 # complex randn already has the correct scaling of stddev=1.0
                                 scaling = 1 / math.sqrt(2)
                                 twiddle = torch.randn((nstacks, nblocks, log_n, n // 2, 2, 2), dtype=dtype, requires_grad=True, device=device) * scaling

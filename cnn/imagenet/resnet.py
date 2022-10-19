@@ -40,23 +40,19 @@ class ResNetBuilder(object):
 
     def conv3x3(self, in_planes, out_planes, stride=1):
         """3x3 convolution with padding"""
-        c = self.conv(3, in_planes, out_planes, stride=stride)
-        return c
+        return self.conv(3, in_planes, out_planes, stride=stride)
 
     def conv1x1(self, in_planes, out_planes, stride=1):
         """1x1 convolution with padding"""
-        c = self.conv(1, in_planes, out_planes, stride=stride)
-        return c
+        return self.conv(1, in_planes, out_planes, stride=stride)
 
     def conv7x7(self, in_planes, out_planes, stride=1):
         """7x7 convolution with padding"""
-        c = self.conv(7, in_planes, out_planes, stride=stride)
-        return c
+        return self.conv(7, in_planes, out_planes, stride=stride)
 
     def conv5x5(self, in_planes, out_planes, stride=1):
         """5x5 convolution with padding"""
-        c = self.conv(5, in_planes, out_planes, stride=stride)
-        return c
+        return self.conv(5, in_planes, out_planes, stride=stride)
 
     def batchnorm(self, planes, last_bn=False):
         bn = nn.BatchNorm2d(planes)
@@ -172,17 +168,10 @@ class ResNet(nn.Module):
             dconv = builder.conv1x1(self.inplanes, planes * block.expansion,
                                     stride=stride)
             dbn = builder.batchnorm(planes * block.expansion)
-            if dbn is not None:
-                downsample = nn.Sequential(dconv, dbn)
-            else:
-                downsample = dconv
-
-        layers = []
-        layers.append(block(builder, self.inplanes, planes, stride, downsample))
+            downsample = nn.Sequential(dconv, dbn) if dbn is not None else dconv
+        layers = [block(builder, self.inplanes, planes, stride, downsample)]
         self.inplanes = planes * block.expansion
-        for i in range(1, blocks):
-            layers.append(block(builder, self.inplanes, planes))
-
+        layers.extend(block(builder, self.inplanes, planes) for _ in range(1, blocks))
         return nn.Sequential(*layers)
 
     def forward(self, x):
@@ -261,11 +250,8 @@ def build_resnet(version, config, model_state=None):
     config = resnet_configs[config]
 
     builder = ResNetBuilder(version, config)
-    print("Version: {}".format(version))
-    print("Config: {}".format(config))
-    model = version['net'](builder,
-                           version['block'],
-                           version['layers'],
-                           version['num_classes'])
-
-    return model
+    print(f"Version: {version}")
+    print(f"Config: {config}")
+    return version['net'](
+        builder, version['block'], version['layers'], version['num_classes']
+    )

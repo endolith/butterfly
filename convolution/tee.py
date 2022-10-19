@@ -98,7 +98,7 @@ class Tee(object):
         return self.stream.fileno()
 
     def __repr__(self):
-        return "<%s: %s>" % (self.__class__.__name__, self.filename)
+        return f"<{self.__class__.__name__}: {self.filename}>"
 
     __str__ = __repr__
     __unicode__ = __repr__

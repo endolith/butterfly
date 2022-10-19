@@ -43,32 +43,32 @@ def munchconfig_to_tune_munchconfig(cfg):
             distribution is log uniform: exp(uniform(log 1e-4, log 1e-3))
     """
     def convert_value(v):
-        # The type is omegaconf.listconfig.ListConfig and not list, so we test if it's a Sequence
         if not (isinstance(v, Sequence) and len(v) > 0 and v[0] in HYDRA_TUNE_KEYS):
             return v
+        if v[0] == '_grid':
+            # grid_search requires list for some reason
+            return grid_search(list(v[1:]))
+        elif v[0] == '_sample':
+            # Python's lambda doesn't capture the object, it only captures the variable name
+            # So we need extra argument to capture the object
+            # https://docs.python.org/3/faq/programming.html#why-do-lambdas-defined-in-a-loop-with-different-values-all-return-the-same-result
+            # https://stackoverflow.com/questions/2295290/what-do-lambda-function-closures-capture
+            # Switching back to not capturing variable since (i) ray 1.0 doesn't like that
+            # (ii) v isn't changing in this scope
+            return sample_from(lambda _: random.choice(v[1:]))
+        elif v[0] == '_sample_uniform':
+            min_, max_ = v[1:]
+            return (
+                sample_from(lambda _: random.randint(min_, max_))
+                if isinstance(min_, int) and isinstance(max_, int)
+                else sample_from(lambda _: random.uniform(min_, max_))
+            )
+
+        elif v[0] == '_sample_log_uniform':
+            min_, max_ = v[1:]
+            return sample_from(lambda _: math.exp(random.uniform(math.log(min_), math.log(max_))))
         else:
-            if v[0] == '_grid':
-                # grid_search requires list for some reason
-                return grid_search(list(v[1:]))
-            elif v[0] == '_sample':
-                # Python's lambda doesn't capture the object, it only captures the variable name
-                # So we need extra argument to capture the object
-                # https://docs.python.org/3/faq/programming.html#why-do-lambdas-defined-in-a-loop-with-different-values-all-return-the-same-result
-                # https://stackoverflow.com/questions/2295290/what-do-lambda-function-closures-capture
-                # Switching back to not capturing variable since (i) ray 1.0 doesn't like that
-                # (ii) v isn't changing in this scope
-                return sample_from(lambda _: random.choice(v[1:]))
-            elif v[0] == '_sample_uniform':
-                min_, max_ = v[1:]
-                if isinstance(min_, int) and isinstance(max_, int):
-                    return sample_from(lambda _: random.randint(min_, max_))
-                else:
-                    return sample_from(lambda _: random.uniform(min_, max_))
-            elif v[0] == '_sample_log_uniform':
-                min_, max_ = v[1:]
-                return sample_from(lambda _: math.exp(random.uniform(math.log(min_), math.log(max_))))
-            else:
-                assert False
+            assert False
 
     def convert(cfg):
         return Munch({k: convert(v) if isinstance(v, Munch) else
@@ -100,8 +100,12 @@ class TuneReportCheckpointCallback(Callback):
 
 def pl_train_with_tune(cfg, pl_module_cls, checkpoint_dir=None):
     cfg = munch_to_dictconfig(Munch(cfg))
-    checkpoint_path = (None if not checkpoint_dir
-                       else os.path.join(checkpoint_dir, f"{pl_module_cls.__name__}.ckpt"))
+    checkpoint_path = (
+        os.path.join(checkpoint_dir, f"{pl_module_cls.__name__}.ckpt")
+        if checkpoint_dir
+        else None
+    )
+
     trainer_extra_args = dict(
         gpus=1 if cfg.gpu else None,
         progress_bar_refresh_rate=0,
@@ -127,23 +131,26 @@ def ray_train(cfg, pl_module_cls):
     args_str = '_'
     # If we're writing to dfs or efs already, no need to sync explicitly
     # This needs to be a noop function, not just False. If False, ray won't restore failed spot instances
-    sync_to_driver = None if not cfg.runner.nfs else lambda source, target: None
+    sync_to_driver = (lambda source, target: None) if cfg.runner.nfs else None
     experiment = Experiment(
         name=f'{dataset_str}_{model_str}',
         run=partial(pl_train_with_tune, pl_module_cls=pl_module_cls),
         local_dir=cfg.runner.result_dir,
-        num_samples=cfg.runner.ntrials if not cfg.smoke_test else 1,
-        resources_per_trial={'cpu': 1 + cfg.dataset.num_workers, 'gpu': cfg.runner.gpu_per_trial},
-        # epochs + 1 because calling trainer.test(model) counts as one epoch
-        stop={"training_iteration": 1 if cfg.smoke_test else cfg.train.epochs + 1},
+        num_samples=1 if cfg.smoke_test else cfg.runner.ntrials,
+        resources_per_trial={
+            'cpu': 1 + cfg.dataset.num_workers,
+            'gpu': cfg.runner.gpu_per_trial,
+        },
+        stop={
+            "training_iteration": 1 if cfg.smoke_test else cfg.train.epochs + 1
+        },
         config=ray_config,
         loggers=[WandbLogger],
-        keep_checkpoints_num=1,  # Save disk space, just need 1 for recovery
-        # checkpoint_at_end=True,
-        # checkpoint_freq=1000,  # Just to enable recovery with @max_failures
+        keep_checkpoints_num=1,
         max_failures=-1,
-        sync_to_driver=sync_to_driver,  # As of Ray 1.0.0, still need this here
+        sync_to_driver=sync_to_driver,
     )
+
 
     if cfg.smoke_test or cfg.runner.local:
         ray.init(num_gpus=torch.cuda.device_count())
@@ -168,9 +175,10 @@ def ray_train(cfg, pl_module_cls):
                                             grace_period=cfg.runner.grace_period)
     else:
         scheduler = None
-    trials = ray.tune.run(experiment,
-                          scheduler=scheduler,
-                          # sync_config=SyncConfig(sync_to_driver=sync_to_driver),
-                          raise_on_failed_trial=False,
-                          queue_trials=True)
-    return trials
+    return ray.tune.run(
+        experiment,
+        scheduler=scheduler,
+        # sync_config=SyncConfig(sync_to_driver=sync_to_driver),
+        raise_on_failed_trial=False,
+        queue_trials=True,
+    )

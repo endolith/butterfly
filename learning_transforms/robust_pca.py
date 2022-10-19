@@ -52,8 +52,7 @@ def sparse_lowrank_mse(name_size):
     budget = 2 * size * np.log2(size)
     if model[name] == 'BPBP':
         budget *= 2
-    eligible = [res for res in result if res[0] <= budget]
-    if eligible:
+    if eligible := [res for res in result if res[0] <= budget]:
         mse = min(m for (n_params, m) in eligible)
     else:
         mse = np.sum(matrix**2) / size**2

@@ -22,8 +22,11 @@ class PermutationMultTest(unittest.TestCase):
         m = int(math.log2(n))
         prob = torch.rand(m - 1, 3, requires_grad=True)
         for complex in [False, True]:
-            for increasing_stride in [False, True]:
-                input = torch.randn((batch_size, n) + (() if not complex else (2, )), requires_grad=True)
+            for _ in [False, True]:
+                input = torch.randn(
+                    (batch_size, n) + ((2,) if complex else ()), requires_grad=True
+                )
+
                 output = permutation_mult(prob, input)
                 output_torch = permutation_mult_torch(prob, input)
                 self.assertTrue(torch.allclose(output, output_torch, rtol=self.rtol, atol=self.atol),
@@ -44,8 +47,13 @@ class PermutationMultTest(unittest.TestCase):
         m = int(math.log2(n))
         prob = torch.rand(m - 1, 3, device='cuda', requires_grad=True)
         for complex in [False, True]:
-            for increasing_stride in [False, True]:
-                input = torch.randn((batch_size, n) + (() if not complex else (2, )), device=prob.device, requires_grad=True)
+            for _ in [False, True]:
+                input = torch.randn(
+                    (batch_size, n) + ((2,) if complex else ()),
+                    device=prob.device,
+                    requires_grad=True,
+                )
+
                 output = permutation_mult(prob, input)
                 output_torch = permutation_mult_torch(prob, input)
                 self.assertTrue(torch.allclose(output, output_torch, rtol=self.rtol, atol=self.atol),
@@ -65,7 +73,10 @@ class PermutationMultTest(unittest.TestCase):
         m = int(math.log2(n))
         prob = torch.rand(3, requires_grad=True)
         for complex in [False, True]:
-            input = torch.randn((batch_size, n) + (() if not complex else (2, )), requires_grad=True)
+            input = torch.randn(
+                (batch_size, n) + ((2,) if complex else ()), requires_grad=True
+            )
+
             output = permutation_mult_single(prob, input)
             output_torch = permutation_mult_single_factor_torch(prob, input)
             self.assertTrue(torch.allclose(output, output_torch, rtol=self.rtol, atol=self.atol),
@@ -86,7 +97,12 @@ class PermutationMultTest(unittest.TestCase):
         m = int(math.log2(n))
         prob = torch.rand(3, device='cuda', requires_grad=True)
         for complex in [False, True]:
-            input = torch.randn((batch_size, n) + (() if not complex else (2, )), device=prob.device, requires_grad=True)
+            input = torch.randn(
+                (batch_size, n) + ((2,) if complex else ()),
+                device=prob.device,
+                requires_grad=True,
+            )
+
             output = permutation_mult_single(prob, input)
             output_torch = permutation_mult_single_factor_torch(prob, input)
             self.assertTrue(torch.allclose(output, output_torch, rtol=self.rtol, atol=self.atol),

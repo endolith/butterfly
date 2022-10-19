@@ -48,11 +48,10 @@ class MSERegression(Task):
     def loss(outs, y, len_batch=None):
         if len_batch is None:
             return F.mse_loss(outs, y)
-        else:
-            # Computes the loss of the first `lens` items in the batches
-            mask = torch.zeros_like(outs, dtype=torch.bool)
-            for i, l in enumerate(len_batch):
-                mask[i, :l, :] = 1
-            outs_masked = torch.masked_select(outs, mask)
-            y_masked = torch.masked_select(y, mask)
-            return F.mse_loss(outs_masked, y_masked)
+        # Computes the loss of the first `lens` items in the batches
+        mask = torch.zeros_like(outs, dtype=torch.bool)
+        for i, l in enumerate(len_batch):
+            mask[i, :l, :] = 1
+        outs_masked = torch.masked_select(outs, mask)
+        y_masked = torch.masked_select(y, mask)
+        return F.mse_loss(outs_masked, y_masked)

@@ -45,8 +45,7 @@ def twiddle_factor_perm(n, stride):
     factor = jnp.arange(1, 1 + 2 * n).reshape(n // 2, 2, 2)
     matrix_flat = twiddle_factor_to_matrix(factor, stride).flatten()
     nonzero_locs, = jnp.nonzero(matrix_flat)
-    perm = nonzero_locs[jnp.argsort(matrix_flat[nonzero_locs])]
-    return perm
+    return nonzero_locs[jnp.argsort(matrix_flat[nonzero_locs])]
 
 
 def butterfly_multiply_single(twiddle, x, increasing_stride=True, return_intermediates=False):
@@ -69,7 +68,7 @@ def butterfly_multiply_single(twiddle, x, increasing_stride=True, return_interme
         y = y.reshape(n // (2 * stride), 1, 2, stride)
         y = (t * y).sum(axis=-2).reshape(n)
         intermediates.append(y)
-    return y if not return_intermediates else jnp.stack(intermediates)
+    return jnp.stack(intermediates) if return_intermediates else y
 
 
 butterfly_multiply = vmap(butterfly_multiply_single, in_axes=(None, 0))
@@ -150,7 +149,7 @@ def fisher_exact(twiddle, x, return_factor=False):
     # R = vmap(lambda a, p: jnp.tile(a.T, (n, 1))[p])(ahead, factor_perms).reshape(-1, n)
     R = vmap(lambda a, p: a.T[p])(ahead, factor_col_perms).reshape(-1, n)
     fisher_exact = (L @ L.T) * (R @ R.T)
-    return fisher_exact if not return_factor else fisher_exact, PA
+    return fisher_exact if return_factor else fisher_exact, PA
 
 F = fisher_numerical(twiddle, x, key_y_t)
 F_exact, PA = fisher_exact(twiddle, x, return_factor=True)

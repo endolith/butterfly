@@ -28,7 +28,7 @@ class ButterflyBase4Test(unittest.TestCase):
                                 b = torch_butterfly.ButterflyBase4(in_size, out_size, False,
                                                                    complex, increasing_stride,
                                                                    init, nblocks=nblocks).to(device)
-                                dtype = torch.float32 if not complex else torch.complex64
+                                dtype = torch.complex64 if complex else torch.float32
                                 input = torch.randn(batch_size, in_size, dtype=dtype, device=device)
                                 output = b(input)
                                 with torch.no_grad():

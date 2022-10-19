@@ -2,7 +2,10 @@ import os, sys, subprocess
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 # Add to $PYTHONPATH in addition to sys.path so that ray workers can see
-os.environ['PYTHONPATH'] = project_root + ":" + os.environ.get('PYTHONPATH', '')
+os.environ['PYTHONPATH'] = f"{project_root}:" + os.environ.get(
+    'PYTHONPATH', ''
+)
+
 
 import math
 from pathlib import Path
@@ -183,7 +186,7 @@ def default_config():
     grace_period = 25
     # decay_milestones = [int(30 * nmaxepochs / 100), int(60 * nmaxepochs / 100), int(80 * nmaxepochs / 100)]
     resume_pth = None
-    result_dir = project_root + '/cnn/results'  # Directory to store results
+    result_dir = f'{project_root}/cnn/results'
     cuda = torch.cuda.is_available()  # Whether to use GPU
     smoke_test = False  # Finish quickly for testing
 
@@ -231,23 +234,22 @@ def cifar10_experiment(dataset, model, args, optimizer, use_hyperband, lr, lr_de
         'dataset': {'name': dataset, 'batch': batch},
      }
     smoke_str = 'smoke_' if smoke_test else '' # for easy finding and deleting unimportant logs
-    args_str = '_'.join([k+':'+str(v) for k,v in args.items()])
+    args_str = '_'.join([f'{k}:{str(v)}' for k,v in args.items()])
     timestamp = datetime.datetime.now().replace(microsecond=0).isoformat()
     commit_id = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).strip().decode('utf-8')
-    experiment = RayExperiment(
+    return RayExperiment(
         name=f'{smoke_str}{dataset.lower()}_{model}_{args_str}_{optimizer}_epochs_{nmaxepochs}_{timestamp}_{commit_id}',
         run=TrainableModel,
         local_dir=result_dir,
-        num_samples=ntrials if not smoke_test else 1,
+        num_samples=1 if smoke_test else ntrials,
         checkpoint_at_end=True,
-        checkpoint_freq=1000,  # Just to enable recovery with @max_failures
+        checkpoint_freq=1000,
         max_failures=0,
         resources_per_trial={'cpu': 4, 'gpu': 1 if cuda else 0},
         stop={"training_iteration": 1 if smoke_test else nmaxepochs},
         restore=resume_pth,
         config=config,
     )
-    return experiment
 
 
 @ex.automain
@@ -275,5 +277,5 @@ def run(model, args, result_dir, nmaxepochs, use_hyperband, grace_period):
     with checkpoint_path.open('wb') as f:
         pickle.dump(trials, f)
 
-    ex.add_artifact(str(checkpoint_path))
+    ex.add_artifact(checkpoint_path)
     return max(accuracy), model, nparameters, args

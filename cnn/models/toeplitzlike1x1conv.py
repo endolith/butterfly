@@ -155,9 +155,7 @@ class ToeplitzlikeLinear(nn.Module):
         return output.view(*input.size()[:-1], self.out_size)
 
     def extra_repr(self):
-        return 'in_size={}, out_size={}, bias={}, rank={}, corner={}'.format(
-            self.in_size, self.out_size, self.bias is not None, self.rank, self.corner
-        )
+        return f'in_size={self.in_size}, out_size={self.out_size}, bias={self.bias is not None}, rank={self.rank}, corner={self.corner}'
 
 
 class Toeplitzlike1x1Conv(ToeplitzlikeLinear):

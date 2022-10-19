@@ -66,34 +66,11 @@ class ButterflyConv2d(ButterflyBmm):
         batch, c, h, w = input.shape
         h_out = (h + 2 * self.padding[0] - self.dilation[0] * (self.kernel_size[0] - 1) - 1) // self.stride[0] + 1
         w_out = (h + 2 * self.padding[1] - self.dilation[1] * (self.kernel_size[1] - 1) - 1) // self.stride[1] + 1
-        # if not (self.fused_unfold and self.stride == (1, 1) and self.kernel_size[0] == self.kernel_size[1]
-        #         and self.padding[0] == self.padding[1] and self.dilation == (1, 1) and c <= 1024 and input.is_cuda):
-        if True:  # Not using fused unfolding for now to quickly try variants of butterfly
-            # unfold input into patches and call batch matrix multiply
-            input_patches = F.unfold(input, self.kernel_size, self.dilation, self.padding, self.stride).view(
-                batch, c, self.kernel_size[0] * self.kernel_size[1], h_out * w_out)
-            input = input_patches.permute(0, 3, 2, 1).reshape(batch * h_out * w_out, self.kernel_size[0] * self.kernel_size[1], c)
-            output = super().forward(input)
-        else:
-            batch_out = batch * h_out * w_out
-            if self.param == 'regular':
-                if self.nblocks == 0:
-                    output = butterfly_mult_conv2d(self.twiddle, input, self.kernel_size[0],
-                        self.padding[0], self.increasing_stride)
-                else:
-                    output = bbt_mult_conv2d(self.twiddle, input, self.kernel_size[0], self.padding[0])
-            elif self.param == 'ortho':
-                c, s = torch.cos(self.twiddle), torch.sin(self.twiddle)
-                twiddle = torch.stack((torch.stack((c, -s), dim=-1),
-                                       torch.stack((s, c), dim=-1)), dim=-2)
-                output = butterfly_mult_conv2d(self.twiddle, input, self.kernel_size[0],
-                    self.padding[0], self.increasing_stride)
-            elif self.param == 'svd':
-                with torch.no_grad():  # Projected SGD
-                    self.twiddle[..., 1, :].clamp_(min=1 / self.max_gain_per_factor, max=self.max_gain_per_factor)
-                output = butterfly_mult_conv2d_svd(self.twiddle, input, self.kernel_size[0],
-                    self.padding[0], self.increasing_stride)
-            output = super().post_process(input, output)
+        # unfold input into patches and call batch matrix multiply
+        input_patches = F.unfold(input, self.kernel_size, self.dilation, self.padding, self.stride).view(
+            batch, c, self.kernel_size[0] * self.kernel_size[1], h_out * w_out)
+        input = input_patches.permute(0, 3, 2, 1).reshape(batch * h_out * w_out, self.kernel_size[0] * self.kernel_size[1], c)
+        output = super().forward(input)
         # combine matrix batches
         output = output.mean(dim=1)
         if hasattr(self, 'bias_conv'):
@@ -153,18 +130,35 @@ class ButterflyConv2dBBT(nn.Module):
         # for i in range(nblocks - 1):
         layers = []
         for i in range(nblocks):
-            layers.append(ButterflyBmm(in_channels if i == 0 else out_channels,
-                                       out_channels, self.kernel_size[0] *
-                                       self.kernel_size[1], False, False,
-                                       tied_weight, increasing_stride=False,
-                                       ortho_init=ortho_init, param=param,
-                                       max_gain=max_gain_per_block))
-            layers.append(ButterflyBmm(out_channels, out_channels,
-                                       self.kernel_size[0] *
-                                       self.kernel_size[1], False, bias if i == nblocks - 1 else False,
-                                       tied_weight, increasing_stride=True,
-                                       ortho_init=ortho_init, param=param,
-                                       max_gain=max_gain_per_block))
+            layers.extend(
+                (
+                    ButterflyBmm(
+                        in_channels if i == 0 else out_channels,
+                        out_channels,
+                        self.kernel_size[0] * self.kernel_size[1],
+                        False,
+                        False,
+                        tied_weight,
+                        increasing_stride=False,
+                        ortho_init=ortho_init,
+                        param=param,
+                        max_gain=max_gain_per_block,
+                    ),
+                    ButterflyBmm(
+                        out_channels,
+                        out_channels,
+                        self.kernel_size[0] * self.kernel_size[1],
+                        False,
+                        bias if i == nblocks - 1 else False,
+                        tied_weight,
+                        increasing_stride=True,
+                        ortho_init=ortho_init,
+                        param=param,
+                        max_gain=max_gain_per_block,
+                    ),
+                )
+            )
+
         self.layers = nn.Sequential(*layers)
 
     def forward(self, input):

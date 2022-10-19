@@ -23,15 +23,13 @@ def flat_dist_call(tensors, call, extra_args=None):
         if tp not in buckets:
             buckets[tp] = []
         buckets[tp].append(tensor)
-                    
-    if flat_dist_call.warn_on_half:
-        if torch.cuda.HalfTensor in buckets:
-            print("WARNING: gloo dist backend for half parameters may be extremely slow." +
-                  " It is recommended to use the NCCL backend in this case.")
-            flat_dist_call.warn_on_half = False
 
-    for tp in buckets:
-        bucket = buckets[tp]
+    if flat_dist_call.warn_on_half and torch.cuda.HalfTensor in buckets:
+        print("WARNING: gloo dist backend for half parameters may be extremely slow." +
+              " It is recommended to use the NCCL backend in this case.")
+        flat_dist_call.warn_on_half = False
+
+    for tp, bucket in buckets.items():
         coalesced = _flatten_dense_tensors(bucket)
         if extra_args is not None:
             call(coalesced, *extra_args)
@@ -47,14 +45,14 @@ class DistributedDataParallel(Module):
 
     def __init__(self, module):
         super(DistributedDataParallel, self).__init__()
-        self.warn_on_half = True if dist._backend == dist.dist_backend.GLOO else False
+        self.warn_on_half = dist._backend == dist.dist_backend.GLOO
 
         self.module = module
         param_list = [param for param in self.module.state_dict().values() if torch.is_tensor(param)]
         if dist._backend == dist.dist_backend.NCCL:
             for param in param_list:
                 assert param.is_cuda, "NCCL backend only supports model parameters to be on GPU."
-                
+
         #broadcast parameters
         flat_dist_call(param_list, dist.broadcast, (0,) )
 
@@ -66,7 +64,7 @@ class DistributedDataParallel(Module):
                 return
             grads = [param.grad.data for param in self.module.parameters() if param.grad is not None]
             flat_dist_call(grads, dist.all_reduce)
-            
+
         for param in list(self.module.parameters()):
             def allreduce_hook(*unused):
                 torch.autograd.Variable._execution_engine.queue_callback(allreduce_params)

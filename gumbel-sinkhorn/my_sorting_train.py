@@ -34,8 +34,7 @@ def inv_soft_perms_flattened(soft_perms_inf):
     inv_soft_perms = torch.transpose(soft_perms_inf, 2, 3)
     inv_soft_perms = torch.transpose(inv_soft_perms, 0, 1)
 
-    inv_soft_perms_flat = inv_soft_perms.view(-1, n_numbers, n_numbers)
-    return inv_soft_perms_flat
+    return inv_soft_perms.view(-1, n_numbers, n_numbers)
 
 def build_l2s_loss(ordered_tiled, random_tiled, soft_perms_inf, n_numbers):
     """Builds loss tensor with soft permutations, for training."""
@@ -79,10 +78,8 @@ def train_model(n_numbers       = 50,
     model.train()
 
     # count number of parameters
-    n_params = 0
-    for p in model.parameters():
-        n_params += numpy.prod(p.size())
-    print('# of parameters: {}'.format(n_params))
+    n_params = sum(numpy.prod(p.size()) for p in model.parameters())
+    print(f'# of parameters: {n_params}')
 
     # We use mean square error loss here.
     criterion = nn.MSELoss()

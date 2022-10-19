@@ -42,11 +42,10 @@ def fft(n, normalized=False, br_first=True, with_br_perm=True) -> nn.Module:
     if normalized:
         twiddle /= math.sqrt(2)
     b = Butterfly(n, n, bias=False, complex=True, increasing_stride=br_first, init=twiddle)
-    if with_br_perm:
-        br_perm = FixedPermutation(bitreversal_permutation(n, pytorch_format=True))
-        return nn.Sequential(br_perm, b) if br_first else nn.Sequential(b, br_perm)
-    else:
+    if not with_br_perm:
         return b
+    br_perm = FixedPermutation(bitreversal_permutation(n, pytorch_format=True))
+    return nn.Sequential(br_perm, b) if br_first else nn.Sequential(b, br_perm)
 
 
 def fft_unitary(n, br_first=True, with_br_perm=True) -> nn.Module:
@@ -67,12 +66,7 @@ def fft_unitary(n, br_first=True, with_br_perm=True) -> nn.Module:
         phi = torch.ones_like(angle) * math.pi / 4
         alpha = angle / 2 + math.pi / 2
         psi = -angle / 2 - math.pi / 2
-        if br_first:
-            chi = angle / 2 - math.pi / 2
-        else:
-            # Take conjugate transpose of the BP decomposition of ifft, which works out to this,
-            # plus the flip later.
-            chi = -angle / 2 - math.pi / 2
+        chi = angle / 2 - math.pi / 2 if br_first else -angle / 2 - math.pi / 2
         twiddle_factor = torch.stack([phi, alpha, psi, chi], dim=-1)
         factors.append(twiddle_factor.repeat(n // size, 1))
     twiddle = torch.stack(factors, dim=0).unsqueeze(0).unsqueeze(0)
@@ -81,11 +75,10 @@ def fft_unitary(n, br_first=True, with_br_perm=True) -> nn.Module:
     b = ButterflyUnitary(n, n, bias=False, increasing_stride=br_first)
     with torch.no_grad():
         b.twiddle.copy_(twiddle)
-    if with_br_perm:
-        br_perm = FixedPermutation(bitreversal_permutation(n, pytorch_format=True))
-        return nn.Sequential(br_perm, b) if br_first else nn.Sequential(b, br_perm)
-    else:
+    if not with_br_perm:
         return b
+    br_perm = FixedPermutation(bitreversal_permutation(n, pytorch_format=True))
+    return nn.Sequential(br_perm, b) if br_first else nn.Sequential(b, br_perm)
 
 def ifft(n, normalized=False, br_first=True, with_br_perm=True) -> nn.Module:
     """ Construct an nn.Module based on Butterfly that exactly performs the inverse FFT.
@@ -115,11 +108,10 @@ def ifft(n, normalized=False, br_first=True, with_br_perm=True) -> nn.Module:
     else:
         twiddle /= 2
     b = Butterfly(n, n, bias=False, complex=True, increasing_stride=br_first, init=twiddle)
-    if with_br_perm:
-        br_perm = FixedPermutation(bitreversal_permutation(n, pytorch_format=True))
-        return nn.Sequential(br_perm, b) if br_first else nn.Sequential(b, br_perm)
-    else:
+    if not with_br_perm:
         return b
+    br_perm = FixedPermutation(bitreversal_permutation(n, pytorch_format=True))
+    return nn.Sequential(br_perm, b) if br_first else nn.Sequential(b, br_perm)
 
 
 def ifft_unitary(n, br_first=True, with_br_perm=True) -> nn.Module:
@@ -140,12 +132,7 @@ def ifft_unitary(n, br_first=True, with_br_perm=True) -> nn.Module:
         phi = torch.ones_like(angle) * math.pi / 4
         alpha = angle / 2 + math.pi / 2
         psi = -angle / 2 - math.pi / 2
-        if br_first:
-            chi = angle / 2 - math.pi / 2
-        else:
-            # Take conjugate transpose of the BP decomposition of fft, which works out to this,
-            # plus the flip later.
-            chi = -angle / 2 - math.pi / 2
+        chi = angle / 2 - math.pi / 2 if br_first else -angle / 2 - math.pi / 2
         twiddle_factor = torch.stack([phi, alpha, psi, chi], dim=-1)
         factors.append(twiddle_factor.repeat(n // size, 1))
     twiddle = torch.stack(factors, dim=0).unsqueeze(0).unsqueeze(0)
@@ -154,11 +141,10 @@ def ifft_unitary(n, br_first=True, with_br_perm=True) -> nn.Module:
     b = ButterflyUnitary(n, n, bias=False, increasing_stride=br_first)
     with torch.no_grad():
         b.twiddle.copy_(twiddle)
-    if with_br_perm:
-        br_perm = FixedPermutation(bitreversal_permutation(n, pytorch_format=True))
-        return nn.Sequential(br_perm, b) if br_first else nn.Sequential(b, br_perm)
-    else:
+    if not with_br_perm:
         return b
+    br_perm = FixedPermutation(bitreversal_permutation(n, pytorch_format=True))
+    return nn.Sequential(br_perm, b) if br_first else nn.Sequential(b, br_perm)
 
 
 def dct(n: int, type: int = 2, normalized: bool = False) -> nn.Module:
@@ -168,14 +154,14 @@ def dct(n: int, type: int = 2, normalized: bool = False) -> nn.Module:
         type: either 2, 3, or  4. These are the only types supported. See scipy.fft.dct's notes.
         normalized: if True, corresponds to the orthogonal DCT (see scipy.fft.dct's notes)
     """
-    assert type in [2, 3, 4]
+    assert type in {2, 3, 4}
     # Construct the permutation before the FFT: separate the even and odd and then reverse the odd
     # e.g., [0, 1, 2, 3] -> [0, 2, 3, 1].
     perm = torch.arange(n)
     perm = torch.cat((perm[::2], perm[1::2].flip([0])))
     br = bitreversal_permutation(n, pytorch_format=True)
     postprocess_diag = 2 * torch.exp(-1j * math.pi * torch.arange(0.0, n) / (2 * n))
-    if type in [2, 4]:
+    if type in {2, 4}:
         b = fft(n, normalized=normalized, br_first=True, with_br_perm=False)
         if type == 4:
             even_mul = torch.exp(-1j * math.pi / (2 * n) * (torch.arange(0.0, n, 2) + 0.5))
@@ -185,7 +171,7 @@ def dct(n: int, type: int = 2, normalized: bool = False) -> nn.Module:
             # To move it after the permutation, we have to permute the diagonal
             b = diagonal_butterfly(b, preprocess_diag[perm[br]], diag_first=True)
         if normalized:
-            if type in [2, 3]:
+            if type in {2, 3}:
                 postprocess_diag[0] /= 2.0
                 postprocess_diag[1:] /= math.sqrt(2)
             elif type == 4:
@@ -214,7 +200,7 @@ def dst(n: int, type: int = 2, normalized: bool = False) -> nn.Module:
         type: either 2 or 4. These are the only types supported. See scipy.fft.dst's notes.
         normalized: if True, corresponds to the orthogonal DST (see scipy.fft.dst's notes)
     """
-    assert type in [2, 4]
+    assert type in {2, 4}
     b = fft(n, normalized=normalized, br_first=True, with_br_perm=False)
     # Construct the permutation before the FFT: separate the even and odd and then reverse the odd
     # e.g., [0, 1, 2, 3] -> [0, 2, 3, 1].
@@ -285,20 +271,26 @@ def circulant(col, transposed=False, separate_diagonal=True) -> nn.Module:
     # diag = col_f[..., br_perm]
     diag = index_last_dim(col_f, br_perm)
     if separate_diagonal:
-        if not complex:
-            return nn.Sequential(Real2Complex(), b_fft, Diagonal(diagonal_init=diag), b_ifft,
-                                 Complex2Real())
-        else:
-            return nn.Sequential(b_fft, Diagonal(diagonal_init=diag), b_ifft)
-    else:
-        # Combine the diagonal with the last twiddle factor of b_fft
-        with torch.no_grad():
-            b_fft = diagonal_butterfly(b_fft, diag, diag_first=False, inplace=True)
-        # Combine the b_fft and b_ifft into one Butterfly (with nblocks=2).
-        b = butterfly_product(b_fft, b_ifft)
-        b.in_size = n
-        b.out_size = n
-        return b if complex else nn.Sequential(Real2Complex(), b, Complex2Real())
+        return (
+            nn.Sequential(b_fft, Diagonal(diagonal_init=diag), b_ifft)
+            if complex
+            else nn.Sequential(
+                Real2Complex(),
+                b_fft,
+                Diagonal(diagonal_init=diag),
+                b_ifft,
+                Complex2Real(),
+            )
+        )
+
+    # Combine the diagonal with the last twiddle factor of b_fft
+    with torch.no_grad():
+        b_fft = diagonal_butterfly(b_fft, diag, diag_first=False, inplace=True)
+    # Combine the b_fft and b_ifft into one Butterfly (with nblocks=2).
+    b = butterfly_product(b_fft, b_ifft)
+    b.in_size = n
+    b.out_size = n
+    return b if complex else nn.Sequential(Real2Complex(), b, Complex2Real())
 
 
 def toeplitz(col, row=None, separate_diagonal=True) -> nn.Module:
@@ -326,19 +318,18 @@ def toeplitz(col, row=None, separate_diagonal=True) -> nn.Module:
     b = circulant(col, separate_diagonal=separate_diagonal)
     # Adjust in_size = m and out_size = n
     if separate_diagonal:
-        if not complex:
-            b[1].in_size = m
-            b[3].out_size = n
-        else:
+        if complex:
             b[0].in_size = m
             b[2].out_size = n
-    else:
-        if not complex:
-            b[1].in_size = m
-            b[1].out_size = n
         else:
-            b.in_size = m
-            b.out_size = n
+            b[1].in_size = m
+            b[3].out_size = n
+    elif not complex:
+        b[1].in_size = m
+        b[1].out_size = n
+    else:
+        b.in_size = m
+        b.out_size = n
     return b
 
 
@@ -357,8 +348,9 @@ def hadamard(n, normalized=False, increasing_stride=True) -> Butterfly:
     if normalized:
         twiddle /= math.sqrt(2)
     twiddle = twiddle.reshape(1, 1, 1, 1, 2, 2).expand((1, 1, log_n, n // 2, 2, 2))
-    b = Butterfly(n, n, bias=False, increasing_stride=increasing_stride, init=twiddle)
-    return b
+    return Butterfly(
+        n, n, bias=False, increasing_stride=increasing_stride, init=twiddle
+    )
 
 
 def hadamard_diagonal(diagonals: torch.Tensor, normalized: bool = False,
@@ -477,11 +469,17 @@ def conv1d_circular_multichannel(n, weight) -> nn.Module:
     # We just want (input_f.unsqueeze(1) * col_f).sum(dim=2).
     # This can be written as a complex matrix multiply as well.
 
-    if not complex:
-        return nn.Sequential(Real2Complex(), b_fft, DiagonalMultiplySum(col_f), b_ifft,
-                             Complex2Real())
-    else:
-        return nn.Sequential(b_fft, DiagonalMultiplySum(col_f), b_ifft)
+    return (
+        nn.Sequential(b_fft, DiagonalMultiplySum(col_f), b_ifft)
+        if complex
+        else nn.Sequential(
+            Real2Complex(),
+            b_fft,
+            DiagonalMultiplySum(col_f),
+            b_ifft,
+            Complex2Real(),
+        )
+    )
 
 
 def fft2d(n1: int, n2: int, normalized: bool = False, br_first: bool = True,
@@ -498,21 +496,35 @@ def fft2d(n1: int, n2: int, normalized: bool = False, br_first: bool = True,
     """
     b_fft1 = fft(n1, normalized=normalized, br_first=br_first, with_br_perm=False)
     b_fft2 = fft(n2, normalized=normalized, br_first=br_first, with_br_perm=False)
-    b = TensorProduct(b_fft1, b_fft2) if not flatten else butterfly_kronecker(b_fft1, b_fft2)
-    if with_br_perm:
-        br_perm1 = FixedPermutation(bitreversal_permutation(n1, pytorch_format=True))
-        br_perm2 = FixedPermutation(bitreversal_permutation(n2, pytorch_format=True))
-        br_perm = (TensorProduct(br_perm1, br_perm2)
-                   if not flatten else permutation_kronecker(br_perm1, br_perm2))
-        if not flatten:
-            return nn.Sequential(br_perm, b) if br_first else nn.Sequential(b, br_perm)
-        else:
-            return (nn.Sequential(nn.Flatten(start_dim=-2), br_perm, b, nn.Unflatten(-1, (n2, n1)))
-                    if br_first else nn.Sequential(nn.Flatten(start_dim=-2), b, br_perm,
-                                                   nn.Unflatten(-1, (n2, n1))))
+    b = (
+        butterfly_kronecker(b_fft1, b_fft2)
+        if flatten
+        else TensorProduct(b_fft1, b_fft2)
+    )
+
+    if not with_br_perm:
+        return (
+            nn.Sequential(
+                nn.Flatten(start_dim=-2), b, nn.Unflatten(-1, (n2, n1))
+            )
+            if flatten
+            else b
+        )
+
+    br_perm1 = FixedPermutation(bitreversal_permutation(n1, pytorch_format=True))
+    br_perm2 = FixedPermutation(bitreversal_permutation(n2, pytorch_format=True))
+    br_perm = (
+        permutation_kronecker(br_perm1, br_perm2)
+        if flatten
+        else TensorProduct(br_perm1, br_perm2)
+    )
+
+    if not flatten:
+        return nn.Sequential(br_perm, b) if br_first else nn.Sequential(b, br_perm)
     else:
-        return b if not flatten else nn.Sequential(nn.Flatten(start_dim=-2), b,
-                                                   nn.Unflatten(-1, (n2, n1)))
+        return (nn.Sequential(nn.Flatten(start_dim=-2), br_perm, b, nn.Unflatten(-1, (n2, n1)))
+                if br_first else nn.Sequential(nn.Flatten(start_dim=-2), b, br_perm,
+                                               nn.Unflatten(-1, (n2, n1))))
 
 
 def fft2d_unitary(n1: int, n2: int, br_first: bool = True,
@@ -553,21 +565,35 @@ def ifft2d(n1: int, n2: int, normalized: bool = False, br_first: bool = True,
     """
     b_ifft1 = ifft(n1, normalized=normalized, br_first=br_first, with_br_perm=False)
     b_ifft2 = ifft(n2, normalized=normalized, br_first=br_first, with_br_perm=False)
-    b = TensorProduct(b_ifft1, b_ifft2) if not flatten else butterfly_kronecker(b_ifft1, b_ifft2)
-    if with_br_perm:
-        br_perm1 = FixedPermutation(bitreversal_permutation(n1, pytorch_format=True))
-        br_perm2 = FixedPermutation(bitreversal_permutation(n2, pytorch_format=True))
-        br_perm = (TensorProduct(br_perm1, br_perm2)
-                   if not flatten else permutation_kronecker(br_perm1, br_perm2))
-        if not flatten:
-            return nn.Sequential(br_perm, b) if br_first else nn.Sequential(b, br_perm)
-        else:
-            return (nn.Sequential(nn.Flatten(start_dim=-2), br_perm, b, nn.Unflatten(-1, (n2, n1)))
-                    if br_first else nn.Sequential(nn.Flatten(start_dim=-2), b, br_perm,
-                                                   nn.Unflatten(-1, (n2, n1))))
+    b = (
+        butterfly_kronecker(b_ifft1, b_ifft2)
+        if flatten
+        else TensorProduct(b_ifft1, b_ifft2)
+    )
+
+    if not with_br_perm:
+        return (
+            nn.Sequential(
+                nn.Flatten(start_dim=-2), b, nn.Unflatten(-1, (n2, n1))
+            )
+            if flatten
+            else b
+        )
+
+    br_perm1 = FixedPermutation(bitreversal_permutation(n1, pytorch_format=True))
+    br_perm2 = FixedPermutation(bitreversal_permutation(n2, pytorch_format=True))
+    br_perm = (
+        permutation_kronecker(br_perm1, br_perm2)
+        if flatten
+        else TensorProduct(br_perm1, br_perm2)
+    )
+
+    if not flatten:
+        return nn.Sequential(br_perm, b) if br_first else nn.Sequential(b, br_perm)
     else:
-        return b if not flatten else nn.Sequential(nn.Flatten(start_dim=-2), b,
-                                                   nn.Unflatten(-1, (n2, n1)))
+        return (nn.Sequential(nn.Flatten(start_dim=-2), br_perm, b, nn.Unflatten(-1, (n2, n1)))
+                if br_first else nn.Sequential(nn.Flatten(start_dim=-2), b, br_perm,
+                                               nn.Unflatten(-1, (n2, n1))))
 
 
 def ifft2d_unitary(n1: int, n2: int, br_first: bool = True,
@@ -663,22 +689,38 @@ def conv2d_circular_multichannel(n1: int, n2: int, weight: torch.Tensor,
     col_f = torch.view_as_complex(torch.view_as_real(col_f)[..., br_perm2, :, :][..., br_perm1, :])
     if flatten:
         col_f = col_f.reshape(*col_f.shape[:-2], col_f.shape[-2] * col_f.shape[-1])
-    # We just want (input_f.unsqueeze(1) * col_f).sum(dim=2).
-    # This can be written as a complex matrix multiply as well.
     if not complex:
-        if not flatten:
-            return nn.Sequential(Real2Complex(), b_fft, DiagonalMultiplySum(col_f), b_ifft,
-                                Complex2Real())
-        else:
-            return nn.Sequential(Real2Complex(), nn.Flatten(start_dim=-2), b_fft,
-                                 DiagonalMultiplySum(col_f), b_ifft, nn.Unflatten(-1, (n2, n1)),
-                                 Complex2Real())
-    else:
-        if not flatten:
-            return nn.Sequential(b_fft, DiagonalMultiplySum(col_f), b_ifft)
-        else:
-            return nn.Sequential(nn.Flatten(start_dim=-2), b_fft, DiagonalMultiplySum(col_f),
-                                 b_ifft, nn.Unflatten(-1, (n2, n1)))
+        return (
+            nn.Sequential(
+                Real2Complex(),
+                nn.Flatten(start_dim=-2),
+                b_fft,
+                DiagonalMultiplySum(col_f),
+                b_ifft,
+                nn.Unflatten(-1, (n2, n1)),
+                Complex2Real(),
+            )
+            if flatten
+            else nn.Sequential(
+                Real2Complex(),
+                b_fft,
+                DiagonalMultiplySum(col_f),
+                b_ifft,
+                Complex2Real(),
+            )
+        )
+
+    return (
+        nn.Sequential(
+            nn.Flatten(start_dim=-2),
+            b_fft,
+            DiagonalMultiplySum(col_f),
+            b_ifft,
+            nn.Unflatten(-1, (n2, n1)),
+        )
+        if flatten
+        else nn.Sequential(b_fft, DiagonalMultiplySum(col_f), b_ifft)
+    )
 
 
 def fastfood(diag1: torch.Tensor, diag2: torch.Tensor, diag3: torch.Tensor,
@@ -701,14 +743,13 @@ def fastfood(diag1: torch.Tensor, diag2: torch.Tensor, diag3: torch.Tensor,
     assert diag2.shape == diag3.shape == permutation.shape == (n,)
     h1 = hadamard(n, normalized, increasing_stride)
     h2 = hadamard(n, normalized, not increasing_stride)
-    if not separate_diagonal:
-        h1 = diagonal_butterfly(h1, diag1, diag_first=True)
-        h2 = diagonal_butterfly(h2, diag2, diag_first=True)
-        h2 = diagonal_butterfly(h2, diag3, diag_first=False)
-        return nn.Sequential(h1, FixedPermutation(permutation), h2)
-    else:
+    if separate_diagonal:
         return nn.Sequential(Diagonal(diagonal_init=diag1), h1, FixedPermutation(permutation),
                              Diagonal(diagonal_init=diag2), h2, Diagonal(diagonal_init=diag3))
+    h1 = diagonal_butterfly(h1, diag1, diag_first=True)
+    h2 = diagonal_butterfly(h2, diag2, diag_first=True)
+    h2 = diagonal_butterfly(h2, diag3, diag_first=False)
+    return nn.Sequential(h1, FixedPermutation(permutation), h2)
 
 
 def acdc(diag1: torch.Tensor, diag2: torch.Tensor, dct_first: bool = True,
@@ -748,35 +789,33 @@ def acdc(diag1: torch.Tensor, diag2: torch.Tensor, dct_first: bool = True,
         b_ifft = ifft(n, normalized=True, br_first=True, with_br_perm=False)
         b1 = diagonal_butterfly(b_fft, postprocess_diag[br], diag_first=False)
         b2 = diagonal_butterfly(b_ifft, postprocess_diag.conj()[br], diag_first=True)
-        if not separate_diagonal:
-            b1 = diagonal_butterfly(b_fft, diag1[br], diag_first=False)
-            b2 = diagonal_butterfly(b2, diag2[perm], diag_first=False)
-            return nn.Sequential(FixedPermutation(perm),
-                                 Real2Complex(), b1, Complex2Real(),
-                                 Real2Complex(), b2, Complex2Real(),
-                                 FixedPermutation(perm_inverse))
-        else:
+        if separate_diagonal:
             return nn.Sequential(FixedPermutation(perm),
                                  Real2Complex(), b1, Complex2Real(),
                                  Diagonal(diagonal_init=diag1[br]),
                                  Real2Complex(), b2, Complex2Real(),
                                  Diagonal(diagonal_init=diag2[perm]),
                                  FixedPermutation(perm_inverse))
+        b1 = diagonal_butterfly(b_fft, diag1[br], diag_first=False)
+        b2 = diagonal_butterfly(b2, diag2[perm], diag_first=False)
+        return nn.Sequential(FixedPermutation(perm),
+                             Real2Complex(), b1, Complex2Real(),
+                             Real2Complex(), b2, Complex2Real(),
+                             FixedPermutation(perm_inverse))
     else:
         b_fft = fft(n, normalized=True, br_first=True, with_br_perm=False)
         b_ifft = ifft(n, normalized=True, br_first=False, with_br_perm=False)
         b1 = diagonal_butterfly(b_ifft, postprocess_diag.conj(), diag_first=True)
         b2 = diagonal_butterfly(b_fft, postprocess_diag, diag_first=False)
-        if not separate_diagonal:
-            b1 = diagonal_butterfly(b1, diag1[perm][br], diag_first=False)
-            b2 = diagonal_butterfly(b_fft, diag2, diag_first=False)
-            return nn.Sequential(Real2Complex(), b1, Complex2Real(),
-                                 Real2Complex(), b2, Complex2Real())
-        else:
+        if separate_diagonal:
             return nn.Sequential(Real2Complex(), b1, Complex2Real(),
                                  Diagonal(diagonal_init=diag1[perm][br]),
                                  Real2Complex(), b2, Complex2Real(),
                                  Diagonal(diagonal_init=diag2))
+        b1 = diagonal_butterfly(b1, diag1[perm][br], diag_first=False)
+        b2 = diagonal_butterfly(b_fft, diag2, diag_first=False)
+        return nn.Sequential(Real2Complex(), b1, Complex2Real(),
+                             Real2Complex(), b2, Complex2Real())
 
 
 def wavelet_haar(n, with_perm=True) -> nn.Module:

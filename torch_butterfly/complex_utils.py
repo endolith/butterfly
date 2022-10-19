@@ -70,11 +70,16 @@ class ComplexMatmul(torch.autograd.Function):
             #                  -grad.real @ Y_t.imag + grad.imag @ Y_t.real], dim=-1)
             # ).sum_to_size(*X.shape)
             # grad_X = complex_matmul_torch(grad, Y_t.conj()).sum_to_size(*X.shape)
-            if not Y.is_cuda:
-                grad_X = (grad @ Y_t.conj()).sum_to_size(*X.shape)
-            else:
-                grad_X = (cp2torch(torch2cp(grad) @ torch2cp(Y_t.conj())) if use_cupy
-                          else complex_matmul_torch(grad, Y_t.conj())).sum_to_size(*X.shape)
+            grad_X = (
+                (
+                    cp2torch(torch2cp(grad) @ torch2cp(Y_t.conj()))
+                    if use_cupy
+                    else complex_matmul_torch(grad, Y_t.conj())
+                ).sum_to_size(*X.shape)
+                if Y.is_cuda
+                else (grad @ Y_t.conj()).sum_to_size(*X.shape)
+            )
+
         if ctx.needs_input_grad[1]:
             X_t = X.transpose(-1, -2)
             # grad_Y = (X_t.conj() @ grad).sum_to_size(*Y.shape)
@@ -83,16 +88,21 @@ class ComplexMatmul(torch.autograd.Function):
             #                  X_t.real @ grad.imag - X_t.imag @ grad.real], dim=-1)
             # ).sum_to_size(*Y.shape)
             # grad_Y = complex_matmul_torch(X_t.conj(), grad).sum_to_size(*Y.shape)
-            if not X.is_cuda:
-                grad_Y = (X_t.conj() @ grad).sum_to_size(*Y.shape)
-            else:
-                grad_Y = (cp2torch(torch2cp(X_t.conj()) @ torch2cp(grad)) if use_cupy
-                          else complex_matmul_torch(X_t.conj(), grad)).sum_to_size(*Y.shape)
+            grad_Y = (
+                (
+                    cp2torch(torch2cp(X_t.conj()) @ torch2cp(grad))
+                    if use_cupy
+                    else complex_matmul_torch(X_t.conj(), grad)
+                ).sum_to_size(*Y.shape)
+                if X.is_cuda
+                else (X_t.conj() @ grad).sum_to_size(*Y.shape)
+            )
+
         return grad_X, grad_Y
 
 
 def complex_matmul(X, Y):
-    return X @ Y if not X.is_complex() else ComplexMatmul.apply(X, Y)
+    return ComplexMatmul.apply(X, Y) if X.is_complex() else X @ Y
 
 
 # Implement backward pass of real2complex explicitly to avoid annoying (but harmless) warning
@@ -144,10 +154,11 @@ index_last_dim = IndexLastDim.apply
 
 # Pytorch 1.7 doesn't support complex reshape backward for non-contiguous tensors (fixed in nightly)
 def complex_reshape(x, *shape):
-    if not x.is_complex():
-        return x.reshape(*shape)
-    else:
-        return torch.view_as_complex(torch.view_as_real(x).reshape(*shape, 2))
+    return (
+        torch.view_as_complex(torch.view_as_real(x).reshape(*shape, 2))
+        if x.is_complex()
+        else x.reshape(*shape)
+    )
 
 
 class ComplexLinear(nn.Module):
@@ -180,6 +191,4 @@ class ComplexLinear(nn.Module):
         return output if self.bias is None else output + self.bias
 
     def extra_repr(self) -> str:
-        return 'in_features={}, out_features={}, bias={}'.format(
-            self.in_features, self.out_features, self.bias is not None
-        )
+        return f'in_features={self.in_features}, out_features={self.out_features}, bias={self.bias is not None}'

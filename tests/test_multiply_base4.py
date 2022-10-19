@@ -21,13 +21,13 @@ class MultiplyBase4Test(unittest.TestCase):
     def test_multiply_base4(self):
         batch_size = 10
         nstacks = 2
-        for device in ['cpu'] + ([] if not torch.cuda.is_available() else ['cuda']):
+        for device in ['cpu'] + (['cuda'] if torch.cuda.is_available() else []):
             for n in [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]:
                 log_n = int(math.log2(n))
                 for nblocks in [1, 2, 3, 4]:
                     for complex in [False, True]:
                         for increasing_stride in [True, False]:
-                            dtype = torch.float32 if not complex else torch.complex64
+                            dtype = torch.complex64 if complex else torch.float32
                             # complex randn already has the correct scaling of stddev=1.0
                             scaling = 1 / math.sqrt(2)
                             twiddle = torch.randn((nstacks, nblocks, log_n, n // 2, 2, 2),

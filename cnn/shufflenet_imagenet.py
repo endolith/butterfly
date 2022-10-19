@@ -95,7 +95,7 @@ class Bottleneck(nn.Module):
             out_planes -= in_planes
         g = groups if grouped_conv_1st_layer else 1  # No grouped conv for the first layer of stage 2
         self.conv1 = nn.Conv2d(in_planes, mid_planes, kernel_size=1, groups=g, bias=False)
-        self.bn1 = nn.BatchNorm2d(mid_planes if not self.preact else in_planes)
+        self.bn1 = nn.BatchNorm2d(in_planes if self.preact else mid_planes)
         if shuffle == 'P':
             self.shuffle0 = nn.Identity()
             self.shuffle1 = ShuffleBlock(groups=g)
@@ -115,7 +115,7 @@ class Bottleneck(nn.Module):
         self.conv2.weight._no_wd = True
         self.bn2 = nn.BatchNorm2d(mid_planes)
         self.conv3 = nn.Conv2d(mid_planes, out_planes, kernel_size=1, groups=groups, bias=False)
-        self.bn3 = nn.BatchNorm2d(out_planes if not self.preact else mid_planes)
+        self.bn3 = nn.BatchNorm2d(mid_planes if self.preact else out_planes)
 
         self.shortcut = nn.Sequential()
         if stride == 2:

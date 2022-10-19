@@ -2,7 +2,10 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.absolute()
 import os
 # Add to $PYTHONPATH so that ray workers can see
-os.environ['PYTHONPATH'] = str(PROJECT_ROOT) + ":" + os.environ.get('PYTHONPATH', '')
+os.environ['PYTHONPATH'] = f"{str(PROJECT_ROOT)}:" + os.environ.get(
+    'PYTHONPATH', ''
+)
+
 
 import torch
 import pytorch_lightning as pl
@@ -59,9 +62,8 @@ class LightningModel(pl.LightningModule):
         optimizer = hydra.utils.instantiate(self.train_cfg.optimizer, params_dict)
         if 'lr_scheduler' not in self.train_cfg:
             return optimizer
-        else:
-            lr_scheduler = hydra.utils.instantiate(self.train_cfg.lr_scheduler, optimizer)
-            return [optimizer], [lr_scheduler]
+        lr_scheduler = hydra.utils.instantiate(self.train_cfg.lr_scheduler, optimizer)
+        return [optimizer], [lr_scheduler]
 
 
 @hydra.main(config_path="cfg", config_name="config.yaml")

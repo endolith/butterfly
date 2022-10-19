@@ -34,7 +34,7 @@ class ModelAndLoss(nn.Module):
         super(ModelAndLoss, self).__init__()
         self.arch = arch
 
-        print("=> creating model '{}'".format(arch))
+        print(f"=> creating model '{arch}'")
         # model = models.build_resnet(arch[0], arch[1])
         if arch == 'mobilenetv1':
             model = MobileNet(width_mult=width, structure=[struct] * n_struct_layers,
@@ -46,7 +46,7 @@ class ModelAndLoss(nn.Module):
         else:
             model = models.__dict__[arch]()
         if pretrained_weights is not None:
-            print("=> using pre-trained model from a file '{}'".format(arch))
+            print(f"=> using pre-trained model from a file '{arch}'")
             model.load_state_dict(pretrained_weights)
 
         if cuda:
@@ -78,7 +78,7 @@ class ModelAndLoss(nn.Module):
         self.model = DDP(self.model)
 
     def load_model_state(self, state):
-        if not state is None:
+        if state is not None:
             self.model.load_state_dict(state)
 
 
@@ -94,18 +94,15 @@ def get_optimizer(parameters, fp16, lr, momentum, structured_momentum, weight_de
         no_wd_params = [v for n, v in parameters if getattr(v, '_no_wd', False)]
         unstructured_params = [v for n, v in parameters
                                if not getattr(v, '_is_structured', False) and not getattr(v, '_no_wd', False)]
-        params_dict = [{'params': structured_params, 'weight_decay': 0.0, 'momentum': structured_momentum},
-                       {'params': no_wd_params, 'weight_decay': 0.0},
-                       {'params': unstructured_params}]
     else:
         print(" ! Weight decay NOT applied to BN parameters ")
         structured_params = [v for n, v in parameters if getattr(v, '_is_structured', False)]
         no_wd_params = [v for n, v in parameters if getattr(v, '_no_wd', False) or 'bn' in n]
         unstructured_params = [v for n, v in parameters
                                if not getattr(v, '_is_structured', False) and not getattr(v, '_no_wd', False) and 'bn' not in n]
-        params_dict = [{'params': structured_params, 'weight_decay': 0.0, 'momentum': structured_momentum},
-                       {'params': no_wd_params, 'weight_decay': 0.0},
-                       {'params': unstructured_params}]
+    params_dict = [{'params': structured_params, 'weight_decay': 0.0, 'momentum': structured_momentum},
+                   {'params': no_wd_params, 'weight_decay': 0.0},
+                   {'params': unstructured_params}]
     optimizer = torch.optim.SGD(params_dict, lr,
                                 momentum=momentum,
                                 weight_decay=weight_decay,
@@ -116,7 +113,7 @@ def get_optimizer(parameters, fp16, lr, momentum, structured_momentum, weight_de
                                    dynamic_loss_scale=dynamic_loss_scale,
                                    verbose=False)
 
-    if not state is None:
+    if state is not None:
         optimizer.load_state_dict(state)
 
     return optimizer
@@ -267,9 +264,8 @@ def train(train_loader, model_and_loss, optimizer, lr_scheduler, fp16, logger, e
         lr_scheduler(optimizer, i, epoch)
         data_time = time.time() - end
 
-        if prof > 0:
-            if i >= prof:
-                break
+        if prof > 0 and i >= prof:
+            break
 
         optimizer_step = ((i + 1) % batch_size_multiplier) == 0
         loss, prec1, prec5 = step(input, target, optimizer_step = optimizer_step,
@@ -334,15 +330,14 @@ def validate(val_loader, model_and_loss, fp16, logger, epoch, prof=-1, register_
     end = time.time()
 
     data_iter = enumerate(val_loader)
-    if not logger is None:
+    if logger is not None:
         data_iter = logger.iteration_generator_wrapper(data_iter, val=True)
 
     for i, (input, target) in data_iter:
         bs = input.size(0)
         data_time = time.time() - end
-        if prof > 0:
-            if i > prof:
-                break
+        if prof > 0 and i > prof:
+            break
 
         loss, prec1, prec5 = step(input, target)
 
@@ -391,7 +386,7 @@ def train_loop(model_and_loss, optimizer, lr_scheduler, train_loader, val_loader
             best_prec1 = max(prec1, best_prec1)
 
             if should_backup_checkpoint(epoch):
-                backup_filename = 'checkpoint-{}.pth.tar'.format(epoch + 1)
+                backup_filename = f'checkpoint-{epoch + 1}.pth.tar'
             else:
                 backup_filename = None
             utils.save_checkpoint({

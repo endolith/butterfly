@@ -35,8 +35,11 @@ class CIFAR100(CIFAR10):
         return 100
 
     def default_transforms(self):
-        cf100_transforms = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.507, 0.487, 0.441], std=[0.267, 0.256, 0.276])
-        ])
-        return cf100_transforms
+        return transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=[0.507, 0.487, 0.441], std=[0.267, 0.256, 0.276]
+                ),
+            ]
+        )
